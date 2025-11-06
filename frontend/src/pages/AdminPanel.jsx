@@ -200,7 +200,7 @@ export default function AdminPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {alexandrinaDocs.map((doc) => (
+                    {codexDocs.map((doc) => (
                       <tr key={doc.id}>
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {doc.filename}
@@ -239,9 +239,9 @@ export default function AdminPanel() {
                   </tbody>
                 </table>
 
-                {alexandrinaDocs.length === 0 && (
+                {codexDocs.length === 0 && (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    No hay documentos en Alexandrina
+                    No hay documentos en el Codex Dilus
                   </div>
                 )}
               </div>

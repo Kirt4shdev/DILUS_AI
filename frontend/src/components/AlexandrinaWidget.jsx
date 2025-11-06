@@ -66,7 +66,7 @@ export default function CodexDilusWidget() {
         </div>
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Consulta el Codex Dilus
+            Consulta al Codex Dilus
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Tu asistente de documentación técnica
