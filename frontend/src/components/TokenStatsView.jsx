@@ -297,6 +297,160 @@ export default function TokenStatsView() {
             </div>
           </div>
         </div>
+
+        {/* Costes Input/Output por Modelo y Fuente */}
+        <div className="card p-6 col-span-full">
+          <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            Costes de Entrada (Input) vs Salida (Output) por Modelo y Fuente
+          </h4>
+          
+          {stats.input_output_costs && stats.input_output_costs.length > 0 ? (
+            <div className="space-y-6">
+              {/* Gráfico de Barras */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* GPT-5 */}
+                <div>
+                  <h5 className="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">GPT-5</h5>
+                  <div className="space-y-3">
+                    {['library', 'external', 'analysis'].map(sourceType => {
+                      const data = stats.input_output_costs.find(
+                        item => item.ai_model === 'gpt-5' && item.source_type === sourceType
+                      );
+                      
+                      if (!data || (data.input_cost_usd === 0 && data.output_cost_usd === 0)) return null;
+                      
+                      const maxCost = Math.max(data.input_cost_usd, data.output_cost_usd, 0.01);
+                      const inputWidth = (data.input_cost_usd / maxCost) * 100;
+                      const outputWidth = (data.output_cost_usd / maxCost) * 100;
+                      
+                      const sourceLabel = sourceType === 'library' ? '🗄️ Biblioteca' : 
+                                         sourceType === 'external' ? '🌍 Externa' : 
+                                         '📊 Análisis';
+                      
+                      return (
+                        <div key={sourceType} className="space-y-2">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{sourceLabel}</p>
+                          
+                          {/* Barra Input */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 w-16">Input</span>
+                            <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                              <div 
+                                className="bg-blue-500 dark:bg-blue-600 h-full flex items-center justify-end px-2"
+                                style={{ width: `${inputWidth}%` }}
+                              >
+                                <span className="text-xs font-semibold text-white">
+                                  ${data.input_cost_usd.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Barra Output */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 w-16">Output</span>
+                            <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                              <div 
+                                className="bg-orange-500 dark:bg-orange-600 h-full flex items-center justify-end px-2"
+                                style={{ width: `${outputWidth}%` }}
+                              >
+                                <span className="text-xs font-semibold text-white">
+                                  ${data.output_cost_usd.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <p className="text-xs text-gray-500 dark:text-gray-400 text-right">
+                            Total: ${data.total_cost_usd.toFixed(4)} ({data.operation_count} ops)
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* GPT-5-mini */}
+                <div>
+                  <h5 className="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">GPT-5-mini</h5>
+                  <div className="space-y-3">
+                    {['library', 'external', 'analysis'].map(sourceType => {
+                      const data = stats.input_output_costs.find(
+                        item => item.ai_model === 'gpt-5-mini' && item.source_type === sourceType
+                      );
+                      
+                      if (!data || (data.input_cost_usd === 0 && data.output_cost_usd === 0)) return null;
+                      
+                      const maxCost = Math.max(data.input_cost_usd, data.output_cost_usd, 0.01);
+                      const inputWidth = (data.input_cost_usd / maxCost) * 100;
+                      const outputWidth = (data.output_cost_usd / maxCost) * 100;
+                      
+                      const sourceLabel = sourceType === 'library' ? '🗄️ Biblioteca' : 
+                                         sourceType === 'external' ? '🌍 Externa' : 
+                                         '📊 Análisis';
+                      
+                      return (
+                        <div key={sourceType} className="space-y-2">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{sourceLabel}</p>
+                          
+                          {/* Barra Input */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 w-16">Input</span>
+                            <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                              <div 
+                                className="bg-blue-500 dark:bg-blue-600 h-full flex items-center justify-end px-2"
+                                style={{ width: `${inputWidth}%` }}
+                              >
+                                <span className="text-xs font-semibold text-white">
+                                  ${data.input_cost_usd.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Barra Output */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 w-16">Output</span>
+                            <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                              <div 
+                                className="bg-orange-500 dark:bg-orange-600 h-full flex items-center justify-end px-2"
+                                style={{ width: `${outputWidth}%` }}
+                              >
+                                <span className="text-xs font-semibold text-white">
+                                  ${data.output_cost_usd.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <p className="text-xs text-gray-500 dark:text-gray-400 text-right">
+                            Total: ${data.total_cost_usd.toFixed(4)} ({data.operation_count} ops)
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Leyenda */}
+              <div className="flex items-center justify-center space-x-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-blue-500 dark:bg-blue-600 rounded"></div>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Input (Entrada)</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-orange-500 dark:bg-orange-600 rounded"></div>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Output (Salida)</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+              No hay datos de costes input/output disponibles para el período seleccionado
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Tabla de usuarios */}

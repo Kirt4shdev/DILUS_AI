@@ -86,7 +86,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen flex flex-col bg-stone-100 dark:bg-gray-900">
       <Header title="Mis Proyectos" />
 
       <div className="flex-1 overflow-hidden">

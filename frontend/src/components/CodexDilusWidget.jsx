@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Send, BookOpen, Database, Globe } from 'lucide-react';
 import apiClient from '../api/client';
-import Alert from './Alert';
+import { useToast } from '../contexts/ToastContext';
 
 export default function CodexDilusWidget() {
+  const toast = useToast();
+  
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
-  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -16,7 +17,6 @@ export default function CodexDilusWidget() {
     if (!query.trim()) return;
 
     setLoading(true);
-    setError('');
     setResponse(null);
 
     try {
@@ -50,7 +50,7 @@ export default function CodexDilusWidget() {
       setQuery('');
       setProgressMessage('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al consultar al Codex Dilus');
+      toast.error(err.response?.data?.error || 'Error al consultar al Codex Dilus');
       setProgressMessage('');
     } finally {
       setLoading(false);
@@ -76,9 +76,6 @@ export default function CodexDilusWidget() {
 
       {/* Content - CON SCROLL */}
       <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-2">
-        {error && (
-          <Alert type="error" message={error} onClose={() => setError('')} />
-        )}
 
         {!response && !loading && (
           <div className="text-center py-8">

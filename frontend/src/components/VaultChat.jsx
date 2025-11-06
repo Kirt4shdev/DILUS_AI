@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { Send, X, BookOpen, Database, Globe } from 'lucide-react';
 import apiClient from '../api/client';
 import Loading from './Loading';
-import Alert from './Alert';
+import { useToast } from '../contexts/ToastContext';
 
 export default function VaultChat({ isOpen, onClose }) {
+  const toast = useToast();
+  
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
-  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,7 +18,6 @@ export default function VaultChat({ isOpen, onClose }) {
     if (!query.trim()) return;
 
     setLoading(true);
-    setError('');
     setResponse(null);
 
     try {
@@ -51,7 +51,7 @@ export default function VaultChat({ isOpen, onClose }) {
       setQuery('');
       setProgressMessage(''); // Limpiar mensaje de progreso
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al consultar a Alexandrina');
+      toast.error(err.response?.data?.error || 'Error al consultar al Codex Dilus');
       setProgressMessage(''); // Limpiar mensaje de progreso en caso de error
     } finally {
       setLoading(false);
@@ -82,7 +82,7 @@ export default function VaultChat({ isOpen, onClose }) {
               </div>
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                  Consulta a Alexandrina
+                  Consulta al Codex Dilus
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Tu asistente de documentación técnica
@@ -99,15 +99,12 @@ export default function VaultChat({ isOpen, onClose }) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            {error && (
-              <Alert type="error" message={error} onClose={() => setError('')} />
-            )}
 
             {!response && !loading && (
               <div className="text-center py-8">
                 <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 dark:text-gray-400">
-                  Haz una pregunta sobre la documentación técnica a Alexandrina
+                  Haz una pregunta sobre la documentación técnica al Codex Dilus
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
                   Ejemplo: "¿Cuál es el protocolo estándar para sensores Modbus?"
@@ -119,7 +116,7 @@ export default function VaultChat({ isOpen, onClose }) {
               <div className="flex items-center space-x-3 py-4 px-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50">
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-400"></div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                  {progressMessage || 'Consultando a Alexandrina...'}
+                  {progressMessage || 'Consultando al Codex Dilus...'}
                 </p>
               </div>
             )}

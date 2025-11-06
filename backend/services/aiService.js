@@ -17,22 +17,21 @@ export function estimateTokens(text) {
 
 /**
  * Verificar si un texto cabe en el contexto según el modelo
- * GPT-5 Mini: Límite conservador 100k tokens (dejando espacio para respuesta)
- * Para análisis general
+ * GPT-5 y GPT-5-mini: AMBOS tienen 400k tokens de contexto
+ * Límite conservador de 350k para input, dejando 50k para respuesta
  */
-export function canFitInContext(text, maxTokens = 100000) {
+export function canFitInContext(text, maxTokens = 350000) {
   const tokens = estimateTokens(text);
   return tokens <= maxTokens;
 }
 
 /**
- * Verificar si un texto cabe para GPT-5 Standard (límites más estrictos)
- * GPT-5: Límite conservador de 20k tokens para evitar límites de TPM
+ * Verificar si un texto cabe para GPT-5 Standard
+ * MISMO LÍMITE: GPT-5 y GPT-5-mini tienen idéntica capacidad de contexto (400k tokens)
  */
 export function canFitInStandardContext(text) {
-  const tokens = estimateTokens(text);
-  // Límite de 20k tokens para input, dejando espacio para la respuesta
-  return tokens <= 20000;
+  // Ambos modelos tienen 400k tokens, usar el mismo límite
+  return canFitInContext(text);
 }
 
 /**
@@ -66,15 +65,21 @@ export async function generateWithGPT5Mini(prompt, options = {}) {
     const duration = Date.now() - startTime;
     const result = response.data.choices[0].message.content;
     const tokensUsed = response.data.usage?.total_tokens || 0;
+    const tokensInput = response.data.usage?.prompt_tokens || 0;
+    const tokensOutput = response.data.usage?.completion_tokens || 0;
 
     logger.info('GPT-5 Mini response received', { 
       duration: `${duration}ms`, 
-      tokens: tokensUsed 
+      tokens: tokensUsed,
+      input: tokensInput,
+      output: tokensOutput
     });
 
     return {
       result,
       tokensUsed,
+      tokensInput,
+      tokensOutput,
       duration,
       model: 'gpt-5-mini'
     };
@@ -118,15 +123,21 @@ export async function generateWithGPT5Standard(prompt, options = {}) {
     const duration = Date.now() - startTime;
     const result = response.data.choices[0].message.content;
     const tokensUsed = response.data.usage?.total_tokens || 0;
+    const tokensInput = response.data.usage?.prompt_tokens || 0;
+    const tokensOutput = response.data.usage?.completion_tokens || 0;
 
     logger.info('GPT-5 Standard response received', { 
       duration: `${duration}ms`, 
-      tokens: tokensUsed 
+      tokens: tokensUsed,
+      input: tokensInput,
+      output: tokensOutput
     });
 
     return {
       result,
       tokensUsed,
+      tokensInput,
+      tokensOutput,
       duration,
       model: 'gpt-5'
     };

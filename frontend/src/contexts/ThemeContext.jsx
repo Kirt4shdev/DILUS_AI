@@ -11,11 +11,11 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState('dark');
 
   useEffect(() => {
-    // Cargar tema guardado
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    // Cargar tema guardado (predeterminado: oscuro)
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
     applyTheme(savedTheme);
   }, []);

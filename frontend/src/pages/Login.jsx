@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Sun, Moon, LogIn } from 'lucide-react';
-import Alert from '../components/Alert';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
@@ -13,25 +13,23 @@ export default function Login() {
     password: '',
     full_name: ''
   });
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const { login, register } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
-    setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     try {
       let result;
@@ -49,10 +47,10 @@ export default function Login() {
       if (result.success) {
         navigate('/');
       } else {
-        setError(result.error);
+        toast.error(result.error);
       }
     } catch (err) {
-      setError('Error al conectar con el servidor');
+      toast.error('Error al conectar con el servidor');
     } finally {
       setLoading(false);
     }
@@ -87,10 +85,7 @@ export default function Login() {
         {/* Tabs */}
         <div className="flex space-x-2 mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
           <button
-            onClick={() => {
-              setIsRegister(false);
-              setError('');
-            }}
+            onClick={() => setIsRegister(false)}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               !isRegister
                 ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 shadow-sm'
@@ -100,10 +95,7 @@ export default function Login() {
             Iniciar Sesión
           </button>
           <button
-            onClick={() => {
-              setIsRegister(true);
-              setError('');
-            }}
+            onClick={() => setIsRegister(true)}
             className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
               isRegister
                 ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 shadow-sm'
@@ -115,11 +107,6 @@ export default function Login() {
         </div>
 
         {/* Error */}
-        {error && (
-          <div className="mb-4">
-            <Alert type="error" message={error} onClose={() => setError('')} />
-          </div>
-        )}
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -201,7 +188,7 @@ export default function Login() {
         </form>
 
         {/* Credenciales de prueba */}
-        <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+        <div className="mt-6 p-4 bg-stone-200 dark:bg-gray-700 rounded-lg">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
             <strong>Credenciales de prueba:</strong>
           </p>

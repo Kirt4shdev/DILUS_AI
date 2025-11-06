@@ -144,18 +144,69 @@ export async function getModelUsageStats() {
 }
 
 /**
+ * Obtener resumen de uso por usuario
+ * @param {number} days - Días a analizar
+ * @returns {Promise<Array>} Resumen por usuario
+ */
+export async function getUserTokenSummary(days = 30) {
+  const result = await query(`
+    SELECT * FROM user_token_summary
+    WHERE last_usage >= NOW() - INTERVAL '${parseInt(days)} days'
+    ORDER BY total_tokens DESC
+  `);
+  return result.rows;
+}
+
+/**
+ * Obtener estadísticas generales
+ * @param {number} userId - ID del usuario (opcional)
+ * @param {number} days - Días a analizar
+ * @returns {Promise<Object>} Estadísticas generales
+ */
+export async function getOverallStats(userId = null, days = 30) {
+  const params = [];
+  let userFilter = '';
+  
+  if (userId) {
+    userFilter = 'AND user_id = $1';
+    params.push(userId);
+  }
+
+  const result = await query(`
+    SELECT 
+      COUNT(*) as total_operations,
+      SUM(tokens_used) as total_tokens,
+      SUM(cost_usd) as total_cost_usd,
+      AVG(tokens_used) as avg_tokens_per_operation,
+      AVG(duration_ms) as avg_duration_ms
+    FROM token_usage
+    WHERE created_at >= NOW() - INTERVAL '${parseInt(days)} days' ${userFilter}
+  `, params);
+
+  return result.rows[0] || {
+    total_operations: 0,
+    total_tokens: 0,
+    total_cost_usd: 0,
+    avg_tokens_per_operation: 0,
+    avg_duration_ms: 0
+  };
+}
+
+/**
  * Obtener comparación análisis vs chat
  * @param {number} userId - ID del usuario (opcional)
  * @param {number} days - Días a analizar
  * @returns {Promise<Object>} Comparación
  */
 export async function getAnalysisVsChatComparison(userId = null, days = 30) {
-  const params = [days];
+  const params = [];
   let userFilter = '';
+  let paramIndex = 1;
   
   if (userId) {
-    userFilter = 'AND user_id = $2';
+    userFilter = `AND user_id = $${paramIndex}`;
     params.push(userId);
+    paramIndex++;
   }
 
   const result = await query(`
@@ -166,7 +217,7 @@ export async function getAnalysisVsChatComparison(userId = null, days = 30) {
       SUM(cost_usd) as total_cost_usd,
       AVG(tokens_used) as avg_tokens_per_operation
     FROM token_usage
-    WHERE created_at >= NOW() - INTERVAL '$1 days' ${userFilter}
+    WHERE created_at >= NOW() - INTERVAL '${parseInt(days)} days' ${userFilter}
     GROUP BY operation_type
     ORDER BY total_tokens DESC
   `, params);
@@ -220,12 +271,73 @@ export async function getTopQueriesByTokens(filters = {}) {
   return result.rows;
 }
 
+/**
+ * Obtener costes de input/output por modelo y fuente
+ * @param {number} userId - ID del usuario (opcional)
+ * @param {number} days - Días a analizar
+ * @returns {Promise<Array>} Costes desglosados
+ */
+export async function getInputOutputCostsByModelAndSource(userId = null, days = 30) {
+  const params = [];
+  let userFilter = '';
+  let paramIndex = 1;
+  
+  if (userId) {
+    userFilter = `AND user_id = $${paramIndex}`;
+    params.push(userId);
+    paramIndex++;
+  }
+
+  // Precios de OpenAI por 1K tokens
+  const PRICES = {
+    'gpt-5': { input: 0.00125, output: 0.01 },
+    'gpt-5-mini': { input: 0.00025, output: 0.002 },
+    'text-embedding-3-small': { input: 0.00002, output: 0 }
+  };
+
+  const result = await query(`
+    SELECT 
+      ai_model,
+      COALESCE(source_type, 'analysis') as source_type,
+      SUM(tokens_input) as total_tokens_input,
+      SUM(tokens_output) as total_tokens_output,
+      COUNT(*) as operation_count
+    FROM token_usage
+    WHERE created_at >= NOW() - INTERVAL '${parseInt(days)} days' ${userFilter}
+    GROUP BY ai_model, source_type
+    ORDER BY ai_model, source_type
+  `, params);
+
+  // Calcular costes en el backend basándose en tokens
+  const enrichedResults = result.rows.map(row => {
+    const modelPrices = PRICES[row.ai_model] || PRICES['gpt-5-mini'];
+    const inputCost = (row.total_tokens_input || 0) / 1000 * modelPrices.input;
+    const outputCost = (row.total_tokens_output || 0) / 1000 * modelPrices.output;
+    
+    return {
+      ai_model: row.ai_model,
+      source_type: row.source_type,
+      total_tokens_input: parseInt(row.total_tokens_input) || 0,
+      total_tokens_output: parseInt(row.total_tokens_output) || 0,
+      input_cost_usd: inputCost,
+      output_cost_usd: outputCost,
+      total_cost_usd: inputCost + outputCost,
+      operation_count: parseInt(row.operation_count)
+    };
+  });
+
+  return enrichedResults;
+}
+
 export default {
   logTokenUsage,
   getUserTokenStats,
   getDailyTokenUsage,
   getModelUsageStats,
+  getUserTokenSummary,
+  getOverallStats,
   getAnalysisVsChatComparison,
-  getTopQueriesByTokens
+  getTopQueriesByTokens,
+  getInputOutputCostsByModelAndSource
 };
 

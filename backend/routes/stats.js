@@ -6,7 +6,8 @@ import {
   getDailyTokenUsage, 
   getModelUsageStats,
   getAnalysisVsChatComparison,
-  getTopQueriesByTokens
+  getTopQueriesByTokens,
+  getInputOutputCostsByModelAndSource
 } from '../services/tokenStatsService.js';
 import { logger } from '../utils/logger.js';
 
@@ -35,6 +36,9 @@ router.get('/overview', async (req, res, next) => {
 
     // Top 10 consultas más costosas
     const topQueries = await getTopQueriesByTokens({ limit: 10 });
+
+    // Costes de input/output por modelo y fuente
+    const inputOutputCosts = await getInputOutputCostsByModelAndSource(null, parseInt(days));
 
     // Uso de biblioteca vs externa (para chat)
     const libraryVsExternal = await query(`
@@ -77,6 +81,7 @@ router.get('/overview', async (req, res, next) => {
       analysis_vs_chat: analysisVsChat,
       model_stats: modelStats,
       top_queries: topQueries,
+      input_output_costs: inputOutputCosts,
       library_vs_external: libraryVsExternal.rows,
       user_summary: userSummary.rows
     });

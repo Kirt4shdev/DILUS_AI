@@ -106,16 +106,43 @@ CREATE OR REPLACE FUNCTION log_token_usage(
 ) RETURNS INTEGER AS $$
 DECLARE
   v_cost_usd DECIMAL(10, 6);
+  v_input_cost DECIMAL(10, 6);
+  v_output_cost DECIMAL(10, 6);
   v_id INTEGER;
 BEGIN
-  -- Calcular coste aproximado basado en modelo
-  -- Precios de OpenAI (aproximados, ajustar según tarifa real)
-  v_cost_usd := CASE p_ai_model
-    WHEN 'gpt-5' THEN (p_tokens_used / 1000.0) * 0.03 -- $0.03 por 1K tokens (estimado)
-    WHEN 'gpt-5-mini' THEN (p_tokens_used / 1000.0) * 0.01 -- $0.01 por 1K tokens (estimado)
-    WHEN 'text-embedding-3-small' THEN (p_tokens_used / 1000.0) * 0.0001 -- $0.0001 por 1K tokens
-    ELSE (p_tokens_used / 1000.0) * 0.01
-  END;
+  -- Calcular coste REAL según precios de OpenAI (Noviembre 2025)
+  -- Precios por millón de tokens convertidos a por 1K tokens
+  
+  IF p_tokens_input IS NOT NULL AND p_tokens_output IS NOT NULL THEN
+    -- Cálculo separado por input/output (más preciso)
+    CASE p_ai_model
+      WHEN 'gpt-5' THEN
+        -- Input: $1.25/M = $0.00125/1K, Output: $10.00/M = $0.01/1K
+        v_input_cost := (p_tokens_input / 1000.0) * 0.00125;
+        v_output_cost := (p_tokens_output / 1000.0) * 0.01;
+      WHEN 'gpt-5-mini' THEN
+        -- Input: $0.25/M = $0.00025/1K, Output: $2.00/M = $0.002/1K
+        v_input_cost := (p_tokens_input / 1000.0) * 0.00025;
+        v_output_cost := (p_tokens_output / 1000.0) * 0.002;
+      WHEN 'text-embedding-3-small' THEN
+        -- $0.02/M = $0.00002/1K (solo input)
+        v_input_cost := (p_tokens_used / 1000.0) * 0.00002;
+        v_output_cost := 0;
+      ELSE
+        -- Precio por defecto (gpt-5-mini)
+        v_input_cost := (p_tokens_input / 1000.0) * 0.00025;
+        v_output_cost := (p_tokens_output / 1000.0) * 0.002;
+    END CASE;
+    v_cost_usd := v_input_cost + v_output_cost;
+  ELSE
+    -- Si no hay separación, usar total con precio promedio
+    v_cost_usd := CASE p_ai_model
+      WHEN 'gpt-5' THEN (p_tokens_used / 1000.0) * 0.005625 -- Promedio aproximado
+      WHEN 'gpt-5-mini' THEN (p_tokens_used / 1000.0) * 0.001125 -- Promedio aproximado
+      WHEN 'text-embedding-3-small' THEN (p_tokens_used / 1000.0) * 0.00002
+      ELSE (p_tokens_used / 1000.0) * 0.001125
+    END;
+  END IF;
   
   -- Insertar registro
   INSERT INTO token_usage (

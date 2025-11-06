@@ -137,9 +137,11 @@ router.post('/projects/:projectId/analyze/pliego', async (req, res, next) => {
       operationSubtype: 'pliego_tecnico',
       aiModel: aiResponse.model,
       tokensUsed: aiResponse.tokensUsed,
+      tokensInput: aiResponse.tokensInput,
+      tokensOutput: aiResponse.tokensOutput,
       projectId: projectId,
       analysisId: saveResult.rows[0].id,
-      queryObject: `Análisis de pliego técnico - ${selectedDocs.length} documentos`,
+      queryObject: `Análisis de pliego técnico - ${document_ids.length} documentos`,
       durationMs: aiResponse.duration
     });
 
@@ -224,9 +226,11 @@ router.post('/projects/:projectId/analyze/contrato', async (req, res, next) => {
       operationSubtype: 'contrato',
       aiModel: aiResponse.model,
       tokensUsed: aiResponse.tokensUsed,
+      tokensInput: aiResponse.tokensInput,
+      tokensOutput: aiResponse.tokensOutput,
       projectId: projectId,
       analysisId: saveResult.rows[0].id,
-      queryObject: `Análisis de contrato - ${selectedDocs.length} documentos`,
+      queryObject: `Análisis de contrato - ${document_ids.length} documentos`,
       durationMs: aiResponse.duration
     });
 
@@ -320,9 +324,11 @@ router.post('/projects/:projectId/generate/oferta', async (req, res, next) => {
       operationSubtype: 'oferta',
       aiModel: aiResponse.model,
       tokensUsed: aiResponse.tokensUsed,
+      tokensInput: aiResponse.tokensInput,
+      tokensOutput: aiResponse.tokensOutput,
       projectId: projectId,
       analysisId: saveOferta.rows[0].id,
-      queryObject: `Generación de oferta para ${cliente} - ${selectedDocs.length} documentos`,
+      queryObject: `Generación de oferta para ${cliente} - ${document_ids.length} documentos`,
       durationMs: aiResponse.duration
     });
 
@@ -405,9 +411,11 @@ router.post('/projects/:projectId/generate/documentacion', async (req, res, next
       operationSubtype: 'documentacion',
       aiModel: aiResponse.model,
       tokensUsed: aiResponse.tokensUsed,
+      tokensInput: aiResponse.tokensInput,
+      tokensOutput: aiResponse.tokensOutput,
       projectId: projectId,
       analysisId: saveDoc.rows[0].id,
-      queryObject: `Generación de ${tipo_documento} - ${selectedDocs.length} documentos`,
+      queryObject: `Generación de ${tipo_documento} - ${document_ids.length} documentos`,
       durationMs: aiResponse.duration
     });
 

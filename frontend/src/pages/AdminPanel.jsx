@@ -2,19 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
-import Alert from '../components/Alert';
 import TokenStatsView from '../components/TokenStatsView';
 import apiClient from '../api/client';
+import { useToast } from '../contexts/ToastContext';
 
 export default function AdminPanel() {
+  const toast = useToast();
+  
   const [activeTab, setActiveTab] = useState('codex');
   const [codexDocs, setCodexDocs] = useState([]);
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     if (activeTab === 'codex') loadCodexDocs();
@@ -28,7 +28,7 @@ export default function AdminPanel() {
       const response = await apiClient.get('/admin/vault/documents');
       setCodexDocs(response.data.documents);
     } catch (error) {
-      setError('Error al cargar documentos del Codex Dilus');
+      toast.error('Error al cargar documentos del Codex Dilus');
     } finally {
       setLoading(false);
     }
@@ -40,7 +40,7 @@ export default function AdminPanel() {
       const response = await apiClient.get('/admin/users');
       setUsers(response.data.users);
     } catch (error) {
-      setError('Error al cargar usuarios');
+      toast.error('Error al cargar usuarios');
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export default function AdminPanel() {
       const response = await apiClient.get('/admin/stats');
       setStats(response.data);
     } catch (error) {
-      setError('Error al cargar estadísticas');
+      toast.error('Error al cargar estadísticas');
     } finally {
       setLoading(false);
     }
@@ -70,10 +70,10 @@ export default function AdminPanel() {
       await apiClient.post('/admin/vault/documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      setSuccess('Documento añadido al Codex Dilus exitosamente');
+      toast.success('Documento añadido al Codex Dilus exitosamente');
       loadCodexDocs();
     } catch (error) {
-      setError(error.response?.data?.error || 'Error al subir documento');
+      toast.error(error.response?.data?.error || 'Error al subir documento');
     } finally {
       setUploading(false);
     }
@@ -84,10 +84,10 @@ export default function AdminPanel() {
 
     try {
       await apiClient.delete(`/admin/vault/documents/${id}`);
-      setSuccess('Documento eliminado del Codex Dilus');
+      toast.success('Documento eliminado del Codex Dilus');
       loadCodexDocs();
     } catch (error) {
-      setError('Error al eliminar documento');
+      toast.error('Error al eliminar documento');
     }
   };
 
@@ -96,10 +96,10 @@ export default function AdminPanel() {
       await apiClient.put(`/admin/users/${userId}`, {
         is_active: !currentStatus
       });
-      setSuccess('Estado del usuario actualizado');
+      toast.success('Estado del usuario actualizado');
       loadUsers();
     } catch (error) {
-      setError('Error al actualizar usuario');
+      toast.error('Error al actualizar usuario');
     }
   };
 
@@ -111,21 +111,10 @@ export default function AdminPanel() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-stone-100 dark:bg-gray-900">
       <Header title="Panel de Administración" />
 
       <div className="container mx-auto px-6 py-8">
-        {/* Alertas */}
-        {error && (
-          <div className="mb-4">
-            <Alert type="error" message={error} onClose={() => setError('')} />
-          </div>
-        )}
-        {success && (
-          <div className="mb-4">
-            <Alert type="success" message={success} onClose={() => setSuccess('')} />
-          </div>
-        )}
 
         {/* Tabs */}
         <div className="flex space-x-2 mb-6 border-b border-gray-200 dark:border-gray-700">
@@ -134,10 +123,7 @@ export default function AdminPanel() {
             return (
               <button
                 key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setError('');
-                }}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center space-x-2 px-4 py-3 border-b-2 font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'border-primary-600 text-primary-600 dark:text-primary-400'
@@ -183,7 +169,7 @@ export default function AdminPanel() {
               {/* Lista de documentos */}
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
+                  <thead className="bg-stone-200 dark:bg-gray-700">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                         Documento
@@ -257,7 +243,7 @@ export default function AdminPanel() {
 
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
+                  <thead className="bg-stone-200 dark:bg-gray-700">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                         Usuario
@@ -365,7 +351,7 @@ export default function AdminPanel() {
               </div>
 
               {/* Uso de IA */}
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+              <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-6">
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
                   Uso de IA (Últimos 30 días)
                 </h4>

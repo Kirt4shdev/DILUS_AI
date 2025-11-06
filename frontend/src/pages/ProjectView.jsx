@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Upload, FileText, Check, Loader, XCircle, Trash2, X } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
-import Alert from '../components/Alert';
 import Modal from '../components/Modal';
 import apiClient from '../api/client';
+import { useToast } from '../contexts/ToastContext';
 
 export default function ProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -31,8 +32,6 @@ export default function ProjectView() {
   const [resultMetadata, setResultMetadata] = useState(null);
   const [currentAnalysisId, setCurrentAnalysisId] = useState(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     loadProject();
@@ -64,7 +63,7 @@ export default function ProjectView() {
       const response = await apiClient.get(`/projects/${id}`);
       setProject(response.data.project);
     } catch (error) {
-      setError('Error al cargar proyecto');
+      toast.error('Error al cargar proyecto');
       console.error(error);
     }
   };
@@ -75,7 +74,7 @@ export default function ProjectView() {
       const response = await apiClient.get(`/projects/${id}/documents`);
       setDocuments(response.data.documents);
     } catch (error) {
-      setError('Error al cargar documentos');
+      toast.error('Error al cargar documentos');
     } finally {
       setLoading(false);
     }
@@ -131,10 +130,10 @@ export default function ProjectView() {
       await apiClient.post(`/projects/${id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      setSuccess('Documento subido exitosamente');
+      toast.success('Documento subido exitosamente');
       loadDocuments();
     } catch (error) {
-      setError(error.response?.data?.error || 'Error al subir documento');
+      toast.error(error.response?.data?.error || 'Error al subir documento');
     } finally {
       setUploading(false);
     }
@@ -154,7 +153,7 @@ export default function ProjectView() {
     
     try {
       await apiClient.delete(`/projects/${id}/documents/${docId}`);
-      setSuccess('Documento eliminado');
+      toast.success('Documento eliminado');
       loadDocuments();
       // Limpiar el documento de todas las selecciones
       setSelectedDocsByTab(prev => ({
@@ -164,20 +163,19 @@ export default function ProjectView() {
         documentacion: prev.documentacion.filter(id => id !== docId)
       }));
     } catch (error) {
-      setError('Error al eliminar documento');
+      toast.error('Error al eliminar documento');
     }
   };
 
   const handleAnalyze = async (analysisType, useStandard = false) => {
     const selectedDocs = selectedDocsByTab[analysisType] || [];
     if (selectedDocs.length === 0) {
-      setError('Selecciona al menos un documento');
+      toast.error('Selecciona al menos un documento');
       return;
     }
 
     setAnalyzing(true);
     setAnalyzingWithStandard(useStandard);
-    setError('');
     setResult(null);
 
     try {
@@ -205,12 +203,12 @@ export default function ProjectView() {
       
       setResult(response.data.result);
       setResultMetadata(response.data.metadata);
-      setSuccess('Análisis completado exitosamente');
+      toast.success('Análisis completado exitosamente');
       setProgressMessage(''); // Limpiar mensaje de progreso
       // Recargar historial para mostrar el nuevo análisis
       loadAnalysisHistory();
     } catch (error) {
-      setError(error.response?.data?.error || 'Error al realizar análisis');
+      toast.error(error.response?.data?.error || 'Error al realizar análisis');
       setProgressMessage(''); // Limpiar mensaje de progreso en caso de error
     } finally {
       setAnalyzing(false);
@@ -221,12 +219,11 @@ export default function ProjectView() {
   const handleGenerateDocument = async (type, additionalData) => {
     const selectedDocs = selectedDocsByTab[type] || [];
     if (selectedDocs.length === 0) {
-      setError('Selecciona al menos un documento');
+      toast.error('Selecciona al menos un documento');
       return;
     }
 
     setAnalyzing(true);
-    setError('');
 
     try {
       // Paso 1: Preparando documentos
@@ -262,10 +259,10 @@ export default function ProjectView() {
       link.click();
       link.remove();
 
-      setSuccess('Documento generado y descargado exitosamente');
+      toast.success('Documento generado y descargado exitosamente');
       setProgressMessage(''); // Limpiar mensaje de progreso
     } catch (error) {
-      setError('Error al generar documento');
+      toast.error('Error al generar documento');
       setProgressMessage(''); // Limpiar mensaje de progreso en caso de error
     } finally {
       setAnalyzing(false);
@@ -275,7 +272,7 @@ export default function ProjectView() {
   const handleDeleteAnalysis = async (analysisId) => {
     try {
       await apiClient.delete(`/projects/${id}/analysis/${analysisId}`);
-      setSuccess('Análisis eliminado correctamente');
+      toast.success('Análisis eliminado correctamente');
       setDeleteConfirmModal(null);
       
       // Si el análisis borrado es el actual, limpiar
@@ -288,13 +285,13 @@ export default function ProjectView() {
       // Recargar historial
       loadAnalysisHistory();
     } catch (error) {
-      setError(error.response?.data?.error || 'Error al eliminar análisis');
+      toast.error(error.response?.data?.error || 'Error al eliminar análisis');
     }
   };
 
   const handleAddAnalysisAsDocument = async () => {
     if (!currentAnalysisId || !result) {
-      setError('No hay análisis seleccionado');
+      toast.error('No hay análisis seleccionado');
       return;
     }
 
@@ -312,7 +309,7 @@ export default function ProjectView() {
       const documentName = `${typeName}_${fecha}_${hora}`;
 
       if (!documentName || documentName.trim() === '') {
-        setError('Error al generar nombre del documento');
+        toast.error('Error al generar nombre del documento');
         return;
       }
 
@@ -320,12 +317,12 @@ export default function ProjectView() {
         filename: documentName
       });
 
-      setSuccess(`Análisis añadido como documento: "${documentName}.json"`);
+      toast.success(`Análisis añadido como documento: "${documentName}.json"`);
       // Recargar documentos
       loadDocuments();
     } catch (error) {
       console.error('Error al añadir análisis:', error);
-      setError(error.response?.data?.error || 'Error al añadir análisis como documento');
+      toast.error(error.response?.data?.error || 'Error al añadir análisis como documento');
     }
   };
 
@@ -385,16 +382,6 @@ export default function ProjectView() {
         </div>
 
         {/* Alertas */}
-        {error && (
-          <div className="mb-4">
-            <Alert type="error" message={error} onClose={() => setError('')} />
-          </div>
-        )}
-        {success && (
-          <div className="mb-4">
-            <Alert type="success" message={success} onClose={() => setSuccess('')} />
-          </div>
-        )}
 
         {/* Layout principal */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
