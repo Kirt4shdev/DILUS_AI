@@ -236,7 +236,7 @@ export default function TokenStatsView() {
         {/* Biblioteca vs Externa */}
         <div className="card p-6">
           <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Uso de Alexandrina: Biblioteca vs Externa
+            Uso del Codex Dilus: Biblioteca vs Externa
           </h4>
           
           {/* Visual de porcentajes */}
