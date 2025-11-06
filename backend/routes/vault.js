@@ -1,0 +1,127 @@
+import express from 'express';
+import { query } from '../config/database.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { searchInVault, getContextFromChunks } from '../services/ragService.js';
+import { generateWithGPT5Mini } from '../services/aiService.js';
+import { fillPrompt, PROMPT_CHAT_VAULT } from '../utils/prompts.js';
+import { logger } from '../utils/logger.js';
+import { logTokenUsage } from '../services/tokenStatsService.js';
+
+const router = express.Router();
+
+// Todas las rutas requieren autenticación
+router.use(authenticateToken);
+
+/**
+ * POST /api/vault/query
+ * Consultar la bóveda (chat sin historial)
+ */
+router.post('/query', async (req, res, next) => {
+  try {
+    const { query: userQuery } = req.body;
+
+    if (!userQuery || userQuery.trim().length === 0) {
+      return res.status(400).json({ error: 'Se requiere una pregunta' });
+    }
+
+    const queryText = userQuery.trim();
+
+    logger.info('Vault query received', { 
+      userId: req.user.id,
+      queryLength: queryText.length 
+    });
+
+    // Buscar en la biblioteca (RAG)
+    const chunks = await searchInVault(queryText, { topK: 5 });
+    
+    let aiResponse;
+    let sources = [];
+    let sourceType = 'none';
+
+    if (chunks.length > 0) {
+      // Se encontraron documentos en la biblioteca
+      sourceType = 'library';
+      
+      // Preparar contexto
+      const context = await getContextFromChunks(chunks);
+
+      // Crear prompt con contexto de la biblioteca
+      const prompt = fillPrompt(PROMPT_CHAT_VAULT, {
+        contexto: context,
+        pregunta: queryText
+      });
+
+      // Generar respuesta con IA usando la biblioteca
+      aiResponse = await generateWithGPT5Mini(prompt);
+
+      // Extraer fuentes únicas
+      sources = [...new Set(chunks.map(c => c.filename))].filter(Boolean);
+      
+      logger.info('Vault query completed from library', { 
+        userId: req.user.id,
+        chunks: chunks.length,
+        tokens: aiResponse.tokensUsed 
+      });
+    } else {
+      // No se encontró información en la biblioteca, buscar externamente
+      sourceType = 'external';
+      
+      const externalPrompt = `Eres un asistente técnico experto en ingeniería y documentación técnica.
+
+Responde la siguiente pregunta de forma clara, técnica y precisa:
+
+PREGUNTA:
+${queryText}
+
+Proporciona una respuesta técnicamente precisa y útil.`;
+
+      // Generar respuesta con IA sin contexto (búsqueda externa con GPT-5-mini)
+      aiResponse = await generateWithGPT5Mini(externalPrompt);
+      
+      sources = ['GPT-5-mini (Conocimiento externo)'];
+      
+      logger.info('Vault query completed from external source', { 
+        userId: req.user.id,
+        tokens: aiResponse.tokensUsed 
+      });
+    }
+
+    // Guardar en estadísticas (NO como historial de chat)
+    const vaultQueryResult = await query(
+      `INSERT INTO vault_queries (user_id, query_text, response_text, chunks_used, ai_model, tokens_used)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [req.user.id, queryText, aiResponse.result, chunks.length, aiResponse.model, aiResponse.tokensUsed]
+    );
+
+    // Registrar uso de tokens
+    await logTokenUsage({
+      userId: req.user.id,
+      operationType: 'chat',
+      operationSubtype: 'vault_query',
+      aiModel: aiResponse.model,
+      tokensUsed: aiResponse.tokensUsed,
+      sourceType: sourceType,
+      vaultQueryId: vaultQueryResult.rows[0].id,
+      queryObject: queryText.substring(0, 100), // Primeros 100 caracteres de la pregunta
+      durationMs: aiResponse.duration
+    });
+
+    res.json({
+      response: aiResponse.result,
+      chunks_used: chunks.length,
+      sources,
+      source_type: sourceType, // 'library' o 'external'
+      metadata: {
+        model: aiResponse.model,
+        tokens_used: aiResponse.tokensUsed,
+        duration: aiResponse.duration
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
