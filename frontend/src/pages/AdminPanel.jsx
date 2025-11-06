@@ -70,8 +70,8 @@ export default function AdminPanel() {
       await apiClient.post('/admin/vault/documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      setSuccess('Documento añadido a Alexandrina exitosamente');
-      loadVaultDocs();
+      setSuccess('Documento añadido al Codex Dilus exitosamente');
+      loadCodexDocs();
     } catch (error) {
       setError(error.response?.data?.error || 'Error al subir documento');
     } finally {
@@ -80,12 +80,12 @@ export default function AdminPanel() {
   };
 
   const handleDeleteVaultDoc = async (id, filename) => {
-    if (!confirm(`¿Eliminar documento "${filename}" de Alexandrina?`)) return;
+    if (!confirm(`¿Eliminar documento "${filename}" del Codex Dilus?`)) return;
 
     try {
       await apiClient.delete(`/admin/vault/documents/${id}`);
-      setSuccess('Documento eliminado de Alexandrina');
-      loadVaultDocs();
+      setSuccess('Documento eliminado del Codex Dilus');
+      loadCodexDocs();
     } catch (error) {
       setError('Error al eliminar documento');
     }
@@ -104,7 +104,7 @@ export default function AdminPanel() {
   };
 
   const tabs = [
-    { id: 'alexandrina', name: 'Alexandrina', icon: FileText },
+    { id: 'codex', name: 'Codex Dilus', icon: FileText },
     { id: 'users', name: 'Usuarios', icon: Users },
     { id: 'tokenstats', name: 'Estadísticas Tokens', icon: TrendingUp },
     { id: 'stats', name: 'General', icon: BarChart3 }
@@ -155,13 +155,13 @@ export default function AdminPanel() {
         <div className="card">
           {loading && <Loading />}
 
-          {/* Tab: Alexandrina */}
-          {activeTab === 'alexandrina' && !loading && (
+          {/* Tab: Codex Dilus */}
+          {activeTab === 'codex' && !loading && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                    Alimentador de Alexandrina
+                    Alimentador del Codex Dilus
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 mt-1">
                     Documentación corporativa accesible para todos los usuarios
