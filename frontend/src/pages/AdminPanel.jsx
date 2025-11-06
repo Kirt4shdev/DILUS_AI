@@ -353,11 +353,11 @@ export default function AdminPanel() {
                 <StatCard
                   title="Documentos"
                   value={stats.documents.total}
-                  subtitle={`${stats.documents.vault} en Alexandrina`}
+                  subtitle={`${stats.documents.vault} en Codex Dilus`}
                   icon={FileText}
                 />
                 <StatCard
-                  title="Consultas a Alexandrina"
+                  title="Consultas al Codex Dilus"
                   value={stats.vault_queries.last_30_days}
                   subtitle="Últimos 30 días"
                   icon={BarChart3}
