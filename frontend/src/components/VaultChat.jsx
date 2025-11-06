@@ -127,8 +127,8 @@ export default function VaultChat({ isOpen, onClose }) {
                 <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-semibold text-primary-900 dark:text-primary-100">
-                      Respuesta:
-                    </h4>
+                    Respuesta:
+                  </h4>
                     <div className={`flex items-center space-x-2 text-xs px-2 py-1 rounded-full ${
                       response.source_type === 'library'
                         ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'

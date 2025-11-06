@@ -43,34 +43,34 @@ function App() {
               v7_relativeSplatPath: true
             }}
           >
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/project/:id"
-                element={
-                  <ProtectedRoute>
-                    <ProjectView />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute requireAdmin={true}>
-                    <AdminPanel />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/project/:id"
+              element={
+                <ProtectedRoute>
+                  <ProjectView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requireAdmin={true}>
+                  <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>

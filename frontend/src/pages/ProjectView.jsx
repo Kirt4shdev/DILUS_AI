@@ -249,7 +249,7 @@ export default function ProjectView() {
       // Paso 4: Preparando descarga
       setProgressMessage('Preparando descarga...');
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       // Descargar archivo
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -468,7 +468,7 @@ export default function ProjectView() {
                       if (tabHistory && tabHistory.length > 0) {
                         setResult(tabHistory[0].result_data);
                       } else {
-                        setResult(null);
+                      setResult(null);
                       }
                     }}
                     className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
@@ -622,7 +622,7 @@ export default function ProjectView() {
                             <div className="flex items-center gap-3">
                               <h4 className="font-semibold text-gray-900 dark:text-gray-100">
                                 Resultado del análisis
-                              </h4>
+                        </h4>
                               {resultMetadata && (
                                 <span className={`px-2 py-1 rounded-full font-medium text-xs ${
                                   resultMetadata.model === 'gpt-5' 
@@ -687,9 +687,9 @@ export default function ProjectView() {
                         
                         {/* Contenido del resultado */}
                         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
-                          <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                            {JSON.stringify(result, null, 2)}
-                          </pre>
+                        <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                          {JSON.stringify(result, null, 2)}
+                        </pre>
                         </div>
                       </div>
                     )}

@@ -98,23 +98,23 @@ export default function Dashboard() {
               {/* Acciones principales - FIJO */}
               <div className="mb-4 flex-shrink-0">
                 <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                      Proyectos
-                    </h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+              Proyectos
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
                       {filteredProjects.length} {filteredProjects.length === 1 ? 'proyecto' : 'proyectos'}
-                    </p>
-                  </div>
+            </p>
+          </div>
 
-                  <button
-                    onClick={() => setShowNewProject(true)}
-                    className="flex items-center space-x-2 px-4 py-2 btn-primary"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span>Nuevo Proyecto</span>
-                  </button>
-                </div>
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="flex items-center space-x-2 px-4 py-2 btn-primary"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Nuevo Proyecto</span>
+            </button>
+          </div>
 
                 {/* Buscador */}
                 {projects.length > 0 && (
@@ -141,40 +141,40 @@ export default function Dashboard() {
                     </svg>
                   </div>
                 )}
-              </div>
+        </div>
 
               {/* Lista de proyectos - CON SCROLL */}
               <div className="flex-1 overflow-y-auto pr-2">
-                {loading ? (
-                  <Loading message="Cargando proyectos..." />
-                ) : projects.length === 0 ? (
-                  <div className="text-center py-16">
-                    <FolderOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      No tienes proyectos aún
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      Crea tu primer proyecto para comenzar
-                    </p>
-                    <button
-                      onClick={() => setShowNewProject(true)}
-                      className="btn-primary inline-flex items-center space-x-2"
-                    >
-                      <Plus className="w-5 h-5" />
-                      <span>Crear primer proyecto</span>
-                    </button>
-                  </div>
+        {loading ? (
+          <Loading message="Cargando proyectos..." />
+        ) : projects.length === 0 ? (
+          <div className="text-center py-16">
+            <FolderOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-medium text-gray-700 dark:text-gray-300 mb-2">
+              No tienes proyectos aún
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Crea tu primer proyecto para comenzar
+            </p>
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="btn-primary inline-flex items-center space-x-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Crear primer proyecto</span>
+            </button>
+          </div>
                 ) : filteredProjects.length === 0 ? (
                   <div className="text-center py-16">
                     <p className="text-gray-600 dark:text-gray-400">
                       No se encontraron proyectos que coincidan con "{searchQuery}"
                     </p>
                   </div>
-                ) : (
+        ) : (
                   <div className="space-y-3 pb-4">
                 {filteredProjects.map((project) => (
-                  <div
-                    key={project.id}
+              <div
+                key={project.id}
                     className="card hover:shadow-lg transition-all cursor-pointer group flex items-center justify-between p-4"
                     onClick={() => navigate(`/project/${project.id}`)}
                   >
@@ -187,21 +187,21 @@ export default function Dashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-3 mb-1">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors truncate">
-                            {project.name}
-                          </h3>
+                          {project.name}
+                        </h3>
                           <span className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
-                            project.status === 'active'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                          }`}>
-                            {project.status === 'active' ? 'Activo' : 'Archivado'}
-                          </span>
-                        </div>
-                        {project.description && (
+                          project.status === 'active'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                        }`}>
+                          {project.status === 'active' ? 'Activo' : 'Archivado'}
+                        </span>
+                      </div>
+                  {project.description && (
                           <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-1">
-                            {project.description}
-                          </p>
-                        )}
+                      {project.description}
+                    </p>
+                  )}
                       </div>
                     </div>
 
@@ -220,24 +220,24 @@ export default function Dashboard() {
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteProject(project.id, project.name);
-                        }}
+                  </div>
+                </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteProject(project.id, project.name);
+                    }}
                         className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                         title="Eliminar proyecto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                  </div>
-                )}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
               </div>
             </div>
 
