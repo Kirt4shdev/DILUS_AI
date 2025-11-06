@@ -300,19 +300,26 @@ export default function TokenStatsView() {
 
         {/* Costes Input/Output por Modelo y Fuente */}
         <div className="card p-6 col-span-full">
-          <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Costes de Entrada (Input) vs Salida (Output) por Modelo y Fuente
+          <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">
+            📊 Costes de Entrada (Input) vs Salida (Output) por Modelo y Fuente
           </h4>
           
           {stats.input_output_costs && stats.input_output_costs.length > 0 ? (
             <div className="space-y-6">
+              {/* Resumen de datos disponibles */}
+              <div className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Mostrando {stats.input_output_costs.length} combinación(es) de modelo/fuente con datos
+              </div>
+
               {/* Gráfico de Barras */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* GPT-5 */}
                 <div>
-                  <h5 className="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">GPT-5</h5>
-                  <div className="space-y-3">
-                    {['library', 'external', 'analysis'].map(sourceType => {
+                  <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 pb-2 border-b-2 border-blue-500">
+                    GPT-5
+                  </h5>
+                  <div className="space-y-4">
+                    {['analysis', 'library', 'external'].map(sourceType => {
                       const data = stats.input_output_costs.find(
                         item => item.ai_model === 'gpt-5' && item.source_type === sourceType
                       );
@@ -323,13 +330,13 @@ export default function TokenStatsView() {
                       const inputWidth = (data.input_cost_usd / maxCost) * 100;
                       const outputWidth = (data.output_cost_usd / maxCost) * 100;
                       
-                      const sourceLabel = sourceType === 'library' ? '🗄️ Biblioteca' : 
-                                         sourceType === 'external' ? '🌍 Externa' : 
-                                         '📊 Análisis';
+                      const sourceLabel = sourceType === 'analysis' ? '📊 Análisis de Documentos' : 
+                                         sourceType === 'library' ? '🗄️ Chat Codex (Biblioteca)' : 
+                                         '🌍 Chat Codex (Externa)';
                       
                       return (
-                        <div key={sourceType} className="space-y-2">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{sourceLabel}</p>
+                        <div key={sourceType} className="space-y-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{sourceLabel}</p>
                           
                           {/* Barra Input */}
                           <div className="flex items-center space-x-2">
@@ -372,9 +379,11 @@ export default function TokenStatsView() {
 
                 {/* GPT-5-mini */}
                 <div>
-                  <h5 className="text-md font-medium text-gray-800 dark:text-gray-200 mb-3">GPT-5-mini</h5>
-                  <div className="space-y-3">
-                    {['library', 'external', 'analysis'].map(sourceType => {
+                  <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 pb-2 border-b-2 border-green-500">
+                    GPT-5-mini
+                  </h5>
+                  <div className="space-y-4">
+                    {['analysis', 'library', 'external'].map(sourceType => {
                       const data = stats.input_output_costs.find(
                         item => item.ai_model === 'gpt-5-mini' && item.source_type === sourceType
                       );
@@ -385,13 +394,13 @@ export default function TokenStatsView() {
                       const inputWidth = (data.input_cost_usd / maxCost) * 100;
                       const outputWidth = (data.output_cost_usd / maxCost) * 100;
                       
-                      const sourceLabel = sourceType === 'library' ? '🗄️ Biblioteca' : 
-                                         sourceType === 'external' ? '🌍 Externa' : 
-                                         '📊 Análisis';
+                      const sourceLabel = sourceType === 'analysis' ? '📊 Análisis de Documentos' : 
+                                         sourceType === 'library' ? '🗄️ Chat Codex (Biblioteca)' : 
+                                         '🌍 Chat Codex (Externa)';
                       
                       return (
-                        <div key={sourceType} className="space-y-2">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{sourceLabel}</p>
+                        <div key={sourceType} className="space-y-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{sourceLabel}</p>
                           
                           {/* Barra Input */}
                           <div className="flex items-center space-x-2">

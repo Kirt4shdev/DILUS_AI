@@ -14,21 +14,23 @@ router.use(authenticateToken);
 
 /**
  * POST /api/vault/query
- * Consultar la bóveda (chat sin historial)
+ * Consultar la bóveda con soporte para contexto conversacional
  */
 router.post('/query', async (req, res, next) => {
   try {
-    const { query: userQuery } = req.body;
+    const { query: userQuery, conversation_history } = req.body;
 
     if (!userQuery || userQuery.trim().length === 0) {
       return res.status(400).json({ error: 'Se requiere una pregunta' });
     }
 
     const queryText = userQuery.trim();
+    const hasHistory = Array.isArray(conversation_history) && conversation_history.length > 0;
 
     logger.info('Vault query received', { 
       userId: req.user.id,
-      queryLength: queryText.length 
+      queryLength: queryText.length,
+      historyLength: hasHistory ? conversation_history.length : 0
     });
 
     // Buscar en la biblioteca (RAG)
@@ -45,14 +47,30 @@ router.post('/query', async (req, res, next) => {
       // Preparar contexto
       const context = await getContextFromChunks(chunks);
 
-      // Crear prompt con contexto de la biblioteca
-      const prompt = fillPrompt(PROMPT_CHAT_VAULT, {
-        contexto: context,
-        pregunta: queryText
+      // Construir mensajes con historial
+      const messages = [];
+      
+      // System prompt con contexto de la biblioteca
+      const systemPrompt = `Eres un asistente técnico experto en ingeniería y documentación técnica.
+
+CONTEXTO DE LA BIBLIOTECA:
+${context}
+
+Usa SIEMPRE el contexto proporcionado de la biblioteca para responder. Si la información no está en el contexto, indícalo claramente.`;
+
+      // Si hay historial, agregarlo (excepto el último mensaje que es la nueva consulta)
+      if (hasHistory) {
+        messages.push(...conversation_history);
+      }
+      
+      // Agregar la nueva consulta del usuario
+      messages.push({
+        role: 'user',
+        content: queryText
       });
 
-      // Generar respuesta con IA usando la biblioteca
-      aiResponse = await generateWithGPT5Mini(prompt);
+      // Generar respuesta con IA usando la biblioteca y el historial
+      aiResponse = await generateWithGPT5Mini(messages, { systemPrompt });
 
       // Extraer fuentes únicas
       sources = [...new Set(chunks.map(c => c.filename))].filter(Boolean);
@@ -60,29 +78,40 @@ router.post('/query', async (req, res, next) => {
       logger.info('Vault query completed from library', { 
         userId: req.user.id,
         chunks: chunks.length,
-        tokens: aiResponse.tokensUsed 
+        tokens: aiResponse.tokensUsed,
+        withHistory: hasHistory
       });
     } else {
       // No se encontró información en la biblioteca, buscar externamente
       sourceType = 'external';
       
-      const externalPrompt = `Eres un asistente técnico experto en ingeniería y documentación técnica.
+      // Construir mensajes con historial
+      const messages = [];
+      
+      const systemPrompt = `Eres un asistente técnico experto en ingeniería y documentación técnica.
 
-Responde la siguiente pregunta de forma clara, técnica y precisa:
+Responde de forma clara, técnica y precisa. Proporciona información útil y fundamentada.`;
 
-PREGUNTA:
-${queryText}
-
-Proporciona una respuesta técnicamente precisa y útil.`;
+      // Si hay historial, agregarlo
+      if (hasHistory) {
+        messages.push(...conversation_history);
+      }
+      
+      // Agregar la nueva consulta del usuario
+      messages.push({
+        role: 'user',
+        content: queryText
+      });
 
       // Generar respuesta con IA sin contexto (búsqueda externa con GPT-5-mini)
-      aiResponse = await generateWithGPT5Mini(externalPrompt);
+      aiResponse = await generateWithGPT5Mini(messages, { systemPrompt });
       
       sources = ['GPT-5-mini (Conocimiento externo)'];
       
       logger.info('Vault query completed from external source', { 
         userId: req.user.id,
-        tokens: aiResponse.tokensUsed 
+        tokens: aiResponse.tokensUsed,
+        withHistory: hasHistory
       });
     }
 
@@ -101,6 +130,8 @@ Proporciona una respuesta técnicamente precisa y útil.`;
       operationSubtype: 'vault_query',
       aiModel: aiResponse.model,
       tokensUsed: aiResponse.tokensUsed,
+      tokensInput: aiResponse.tokensInput || 0,
+      tokensOutput: aiResponse.tokensOutput || 0,
       sourceType: sourceType,
       vaultQueryId: vaultQueryResult.rows[0].id,
       queryObject: queryText.substring(0, 100), // Primeros 100 caracteres de la pregunta

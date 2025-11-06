@@ -35,24 +35,92 @@ export function canFitInStandardContext(text) {
 }
 
 /**
+ * Truncar historial de conversación para que quepa en el contexto
+ * Mantiene los mensajes más recientes hasta el 75% del límite (262.5k tokens)
+ */
+export function truncateConversationHistory(messages, systemPrompt = '', maxTokens = 262500) {
+  // Calcular tokens del system prompt
+  const systemTokens = estimateTokens(systemPrompt);
+  let availableTokens = maxTokens - systemTokens;
+  
+  const truncatedMessages = [];
+  
+  // Recorrer mensajes desde el más reciente al más antiguo
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    const messageTokens = estimateTokens(message.content);
+    
+    if (messageTokens <= availableTokens) {
+      truncatedMessages.unshift(message); // Agregar al inicio
+      availableTokens -= messageTokens;
+    } else {
+      // Si el mensaje no cabe, detener (mantenemos solo los más recientes)
+      logger.info('Truncating conversation history', { 
+        originalMessages: messages.length, 
+        keptMessages: truncatedMessages.length,
+        remainingTokens: availableTokens
+      });
+      break;
+    }
+  }
+  
+  return truncatedMessages;
+}
+
+/**
  * Generar respuesta con GPT-5 Mini
+ * Soporta tanto un prompt simple (string) como historial de conversación (array)
  */
 export async function generateWithGPT5Mini(prompt, options = {}) {
   const startTime = Date.now();
   
   try {
-    logger.debug('Calling GPT-5 Mini', { promptLength: prompt.length });
+    // Si prompt es un string, convertir a formato de mensajes
+    let messages = [];
+    
+    if (typeof prompt === 'string') {
+      // Modo simple: un solo mensaje de usuario
+      messages = [{ role: 'user', content: prompt }];
+    } else if (Array.isArray(prompt)) {
+      // Modo conversacional: array de mensajes
+      messages = prompt;
+    } else {
+      throw new Error('Prompt debe ser string o array de mensajes');
+    }
+    
+    // Truncar si excede el 75% del contexto (262.5k tokens)
+    const systemPrompt = options.systemPrompt || '';
+    if (systemPrompt) {
+      messages = [{ role: 'system', content: systemPrompt }, ...messages];
+    }
+    
+    // Estimar tokens totales
+    const totalTokens = messages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+    
+    if (totalTokens > 262500) {
+      logger.warn('Conversation exceeds 75% context limit, truncating', { 
+        totalTokens, 
+        messagesCount: messages.length 
+      });
+      messages = truncateConversationHistory(
+        messages.filter(m => m.role !== 'system'), 
+        systemPrompt
+      );
+      if (systemPrompt) {
+        messages = [{ role: 'system', content: systemPrompt }, ...messages];
+      }
+    }
+    
+    logger.debug('Calling GPT-5 Mini', { 
+      messagesCount: messages.length,
+      estimatedTokens: totalTokens
+    });
     
     const response = await axios.post(
       OPENAI_API_URL,
       {
         model: 'gpt-5-mini',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
+        messages: messages
       },
       {
         headers: {
@@ -175,6 +243,7 @@ export default {
   estimateTokens,
   canFitInContext,
   canFitInStandardContext,
-  parseAIResponse
+  parseAIResponse,
+  truncateConversationHistory
 };
 

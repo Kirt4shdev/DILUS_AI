@@ -109,24 +109,32 @@ export async function getUserTokenStats(userId, filters = {}) {
 }
 
 /**
- * Obtener uso diario de tokens
+ * Obtener uso diario de tokens (agregado por día)
  * @param {Object} filters - Filtros opcionales
  * @returns {Promise<Array>} Datos diarios
  */
 export async function getDailyTokenUsage(filters = {}) {
   const { userId, days = 30 } = filters;
   
-  let whereClause = `WHERE usage_date >= CURRENT_DATE - INTERVAL '${days} days'`;
+  let userFilter = '';
   const params = [];
   
   if (userId) {
-    whereClause += ' AND user_id = $1';
+    userFilter = 'AND user_id = $1';
     params.push(userId);
   }
 
+  // Agregar por día, sumando todos los modelos y tipos de operación
   const result = await query(`
-    SELECT * FROM daily_token_usage
-    ${whereClause}
+    SELECT 
+      DATE(created_at) as usage_date,
+      SUM(tokens_used) as total_tokens,
+      SUM(cost_usd) as total_cost_usd,
+      COUNT(*) as operation_count,
+      ROUND(AVG(tokens_used)) as avg_tokens_per_operation
+    FROM token_usage
+    WHERE created_at >= CURRENT_DATE - INTERVAL '${parseInt(days)} days' ${userFilter}
+    GROUP BY DATE(created_at)
     ORDER BY usage_date DESC
     LIMIT 100
   `, params);
