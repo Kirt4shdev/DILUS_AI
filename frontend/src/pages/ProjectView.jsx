@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, FileText, Check, Loader, XCircle, Trash2, X } from 'lucide-react';
+import { Upload, FileText, Check, Loader, XCircle, Trash2, X, FileSearch, Scale, Briefcase, FolderOpen } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -349,10 +349,38 @@ export default function ProjectView() {
   }
 
   const tabs = [
-    { id: 'pliego', name: 'Evaluar Pliego Técnico' },
-    { id: 'contrato', name: 'Evaluar Contrato' },
-    { id: 'oferta', name: 'Generar Oferta' },
-    { id: 'documentacion', name: 'Generar Documentación' }
+    { 
+      id: 'pliego', 
+      name: 'Evaluar Pliego Técnico',
+      icon: FileSearch,
+      description: 'Analiza pliegos técnicos de licitaciones y especificaciones',
+      color: 'blue',
+      gradient: 'from-blue-500 to-cyan-500'
+    },
+    { 
+      id: 'contrato', 
+      name: 'Evaluar Contrato',
+      icon: Scale,
+      description: 'Analiza contratos, cláusulas y condiciones legales',
+      color: 'purple',
+      gradient: 'from-purple-500 to-pink-500'
+    },
+    { 
+      id: 'oferta', 
+      name: 'Generar Oferta',
+      icon: Briefcase,
+      description: 'Genera propuestas técnicas y comerciales (DOCX)',
+      color: 'green',
+      gradient: 'from-green-500 to-emerald-500'
+    },
+    { 
+      id: 'documentacion', 
+      name: 'Generar Documentación',
+      icon: FolderOpen,
+      description: 'Crea documentación técnica completa (DOCX)',
+      color: 'orange',
+      gradient: 'from-orange-500 to-amber-500'
+    }
   ];
 
   return (
@@ -360,32 +388,100 @@ export default function ProjectView() {
       <Header />
 
       <div className="container mx-auto px-6 py-6">
-        {/* Breadcrumb */}
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Volver a proyectos</span>
-        </button>
+        {/* Layout principal: Grid de 2 filas x 2 columnas */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+          {/* FILA 1 - COL 1: Título */}
+          <div className="lg:col-span-1 p-2.5">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+              {project?.name}
+            </h1>
+            {project?.description && (
+              <p className="text-gray-600 dark:text-gray-400 mt-2">
+                {project.description}
+              </p>
+            )}
+          </div>
 
-        {/* Título */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            {project?.name}
-          </h1>
-          {project?.description && (
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              {project.description}
-            </p>
-          )}
-        </div>
+          {/* FILA 1 - COL 2: Navbar */}
+          <div className="lg:col-span-3 px-2.5">
+            {/* Tabs navigation */}
+            <div className="relative border-b border-gray-200 dark:border-gray-700/50">
+              <nav className="flex overflow-x-auto scrollbar-hide" aria-label="Tabs">
+                {tabs.map((tab, index) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  const isFirst = index === 0;
+                  
+                  // Colores específicos por tab
+                  const colorClasses = {
+                    blue: 'text-blue-600 dark:text-blue-400',
+                    purple: 'text-purple-600 dark:text-purple-400',
+                    green: 'text-green-600 dark:text-green-400',
+                    orange: 'text-orange-600 dark:text-orange-400'
+                  };
+                  
+                  const bgClasses = {
+                    blue: 'bg-blue-600 dark:bg-blue-400',
+                    purple: 'bg-purple-600 dark:bg-purple-400',
+                    green: 'bg-green-600 dark:bg-green-400',
+                    orange: 'bg-orange-600 dark:bg-orange-400'
+                  };
+                  
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        const tabHistory = analysisHistory[tab.id];
+                        if (tabHistory && tabHistory.length > 0) {
+                          setResult(tabHistory[0].result_data);
+                        } else {
+                          setResult(null);
+                        }
+                      }}
+                      className={`group relative flex items-center space-x-2.5 ${isFirst ? 'pl-0 pr-4' : 'px-4'} py-3.5 
+                                font-medium text-sm whitespace-nowrap 
+                                transition-all duration-300 ease-out
+                                ${isActive 
+                                  ? colorClasses[tab.color]
+                                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                                }`}
+                    >
+                      {/* Icono */}
+                      <Icon className={`w-5 h-5 transition-all duration-300 ${
+                        isActive ? 'opacity-100 scale-110' : 'opacity-50 group-hover:opacity-70 group-hover:scale-105'
+                      }`} />
+                      
+                      {/* Texto */}
+                      <span className="font-semibold tracking-wide">
+                        {tab.name}
+                      </span>
+                      
+                      {/* Línea animada que avanza desde la izquierda */}
+                      {isActive && (
+                        <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${bgClasses[tab.color]} 
+                                       animate-slide-in-line rounded-full`} />
+                      )}
+                      
+                      {/* Efecto de hover sutil */}
+                      <div className={`absolute bottom-0 left-0 right-0 h-0.5 bg-gray-300 dark:bg-gray-600 
+                                     opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-full
+                                     ${isActive ? 'hidden' : ''}`} />
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+            
+            {/* Descripción de la función activa */}
+            <div className="mt-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                {tabs.find(t => t.id === activeTab)?.description}
+              </p>
+            </div>
+          </div>
 
-        {/* Alertas */}
-
-        {/* Layout principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar: Documentos */}
+          {/* FILA 2 - COL 1: Card Documentos */}
           <div className="lg:col-span-1">
             <div className="card sticky top-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -453,46 +549,15 @@ export default function ProjectView() {
             </div>
           </div>
 
-          {/* Panel principal: Tabs */}
+          {/* FILA 2 - COL 2: Card Contenido */}
           <div className="lg:col-span-3">
             <div className="card">
-              {/* Tabs */}
-              <div className="flex space-x-2 mb-6 overflow-x-auto">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveTab(tab.id);
-                      // Cargar el análisis más reciente de este tab si existe
-                      const tabHistory = analysisHistory[tab.id];
-                      if (tabHistory && tabHistory.length > 0) {
-                        setResult(tabHistory[0].result_data);
-                      } else {
-                      setResult(null);
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {tab.name}
-                  </button>
-                ))}
-              </div>
 
               {/* Contenido del tab */}
               <div className="space-y-4">
                 {/* Tabs de análisis */}
                 {(activeTab === 'pliego' || activeTab === 'contrato') && (
                   <>
-                    <p className="text-gray-600 dark:text-gray-400">
-                      {activeTab === 'pliego'
-                        ? 'Analiza pliegos técnicos de licitaciones y especificaciones'
-                        : 'Analiza contratos, cláusulas y condiciones legales'}
-                    </p>
-
                     {/* Selector de documentos con tags */}
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -764,10 +829,6 @@ function OfertaForm({ documents, selectedDocs, onToggleDoc, analyzing, progressM
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-gray-600 dark:text-gray-400">
-        Genera una propuesta comercial técnica basada en los documentos seleccionados
-      </p>
-
       {/* Selector de documentos con tags */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -863,9 +924,6 @@ function DocumentacionForm({ documents, selectedDocs, onToggleDoc, analyzing, pr
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-gray-600 dark:text-gray-400">
-        Genera documentación técnica profesional
-      </p>
 
       {/* Selector de documentos con tags */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">

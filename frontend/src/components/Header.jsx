@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sun, Moon, LogOut, Shield, User, Home } from 'lucide-react';
+import { Sun, Moon, LogOut, Shield, User, Home, ArrowLeft } from 'lucide-react';
 
 export default function Header({ title }) {
   const { user, logout, isAdmin } = useAuth();
@@ -11,6 +11,7 @@ export default function Header({ title }) {
   const location = useLocation();
   
   const isAdminPage = location.pathname.startsWith('/admin');
+  const isProjectPage = location.pathname.startsWith('/project/');
 
   const handleLogout = () => {
     logout();
@@ -25,14 +26,25 @@ export default function Header({ title }) {
           <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">
             DILUS_AI
           </h1>
-          {title && (
+          {isProjectPage ? (
+            <>
+              <span className="text-gray-400">|</span>
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center space-x-2 text-lg font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span>Proyectos</span>
+              </button>
+            </>
+          ) : title ? (
             <>
               <span className="text-gray-400">|</span>
               <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300">
                 {title}
               </h2>
             </>
-          )}
+          ) : null}
         </div>
 
         {/* Acciones */}
