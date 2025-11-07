@@ -64,7 +64,10 @@ async function getDocumentsContext(documentIds, userId, useStandard = false, ope
         tokens: estimateTokens(fullText),
         model: useStandard ? 'gpt-5' : 'gpt-5-mini'
       });
-      const searchResult = await searchInDocument(docId, fullText.substring(0, 500));
+      const searchResult = await searchInDocument(docId, fullText.substring(0, 500), { 
+        userId: req.user.id, 
+        projectId: doc.project_id 
+      });
       const chunks = searchResult.chunks || [];
       const searchMetadata = searchResult.metadata || {};
       

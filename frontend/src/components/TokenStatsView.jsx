@@ -48,7 +48,7 @@ export default function TokenStatsView() {
   const chatTotal = stats.analysis_vs_chat.find(item => item.operation_type === 'chat');
   const generationTotal = stats.analysis_vs_chat.find(item => item.operation_type === 'generation');
 
-  // Calcular porcentajes para biblioteca vs externa
+  // Calcular porcentajes para Codex Dilus vs externa
   const libraryTotal = stats.library_vs_external.find(item => item.source_type === 'library') || { query_count: 0, total_tokens: 0 };
   const externalTotal = stats.library_vs_external.find(item => item.source_type === 'external') || { query_count: 0, total_tokens: 0 };
   const totalQueries = parseInt(libraryTotal.query_count) + parseInt(externalTotal.query_count);
@@ -122,11 +122,11 @@ export default function TokenStatsView() {
           </div>
         </div>
 
-        {/* % Biblioteca */}
+        {/* % Codex Dilus */}
         <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Uso Biblioteca</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Uso Codex Dilus</p>
               <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-2">
                 {libraryPercentage.toFixed(0)}%
               </p>
@@ -233,10 +233,10 @@ export default function TokenStatsView() {
           </div>
         </div>
 
-        {/* Biblioteca vs Externa */}
+        {/* Codex Dilus vs Externa */}
         <div className="card p-6">
           <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Uso del Codex Dilus: Biblioteca vs Externa
+            Codex Dilus vs Fuentes Externas
           </h4>
           
           {/* Visual de porcentajes */}
@@ -262,11 +262,11 @@ export default function TokenStatsView() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {/* Biblioteca */}
+            {/* Codex Dilus */}
             <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
               <div className="flex items-center space-x-2 mb-2">
                 <Database className="w-5 h-5 text-green-600 dark:text-green-400" />
-                <p className="text-sm font-medium text-green-900 dark:text-green-100">Biblioteca</p>
+                <p className="text-sm font-medium text-green-900 dark:text-green-100">Codex Dilus</p>
               </div>
               <p className="text-2xl font-bold text-green-900 dark:text-green-100">
                 {parseInt(libraryTotal.query_count || 0).toLocaleString()}
@@ -331,8 +331,8 @@ export default function TokenStatsView() {
                       const outputWidth = (data.output_cost_usd / maxCost) * 100;
                       
                       const sourceLabel = sourceType === 'analysis' ? '📊 Análisis de Documentos' : 
-                                         sourceType === 'library' ? '🗄️ Chat Codex (Biblioteca)' : 
-                                         '🌍 Chat Codex (Externa)';
+                                         sourceType === 'library' ? '🗄️ Chat (Codex Dilus)' : 
+                                         '🌍 Chat (Fuente Externa)';
                       
                       return (
                         <div key={sourceType} className="space-y-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -395,8 +395,8 @@ export default function TokenStatsView() {
                       const outputWidth = (data.output_cost_usd / maxCost) * 100;
                       
                       const sourceLabel = sourceType === 'analysis' ? '📊 Análisis de Documentos' : 
-                                         sourceType === 'library' ? '🗄️ Chat Codex (Biblioteca)' : 
-                                         '🌍 Chat Codex (Externa)';
+                                         sourceType === 'library' ? '🗄️ Chat (Codex Dilus)' : 
+                                         '🌍 Chat (Fuente Externa)';
                       
                       return (
                         <div key={sourceType} className="space-y-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">

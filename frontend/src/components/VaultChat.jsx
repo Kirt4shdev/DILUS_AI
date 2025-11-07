@@ -43,8 +43,8 @@ export default function VaultChat({ isOpen, onClose }) {
       setProgressMessage('Analizando tu consulta...');
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Paso 2: Buscando en la biblioteca
-      setProgressMessage('Buscando en la biblioteca de documentación...');
+      // Paso 2: Buscando en el Codex Dilus
+      setProgressMessage('Buscando en el Codex Dilus...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Construir historial de conversación (excluir mensajes de error y el mensaje actual)
@@ -62,11 +62,11 @@ export default function VaultChat({ isOpen, onClose }) {
       
       // Paso 3: Indicar fuente
       if (res.data.source_type === 'library') {
-        setProgressMessage('✓ Datos encontrados en la biblioteca');
+        setProgressMessage('✓ Datos encontrados en el Codex Dilus');
         await new Promise(resolve => setTimeout(resolve, 300));
         setProgressMessage('Generando respuesta con contexto previo...');
       } else {
-        setProgressMessage('⚠ No hay datos en la biblioteca');
+        setProgressMessage('⚠ No hay datos en el Codex Dilus');
         await new Promise(resolve => setTimeout(resolve, 300));
         setProgressMessage('Buscando información externa con contexto previo...');
       }
@@ -180,7 +180,7 @@ export default function VaultChat({ isOpen, onClose }) {
                             {message.source_type === 'library' ? (
                               <>
                                 <Database className="w-3 h-3" />
-                                <span>Biblioteca</span>
+                                <span>Codex Dilus</span>
                               </>
                             ) : (
                               <>

@@ -5,7 +5,8 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_EMBEDDING_URL = 'https://api.openai.com/v1/embeddings';
 
 /**
- * Generar embedding de un texto usando text-embedding-3-small
+ * Generar embedding de un texto usando text-embedding-ada-002
+ * Ada-002 ofrece mejor calidad semántica para español con excelente balance precio/rendimiento
  */
 export async function generateEmbedding(text) {
   try {
@@ -18,7 +19,7 @@ export async function generateEmbedding(text) {
     const response = await axios.post(
       OPENAI_EMBEDDING_URL,
       {
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-ada-002',
         input: text,
         encoding_format: 'float'
       },
@@ -62,7 +63,7 @@ export async function generateEmbeddings(texts) {
     const response = await axios.post(
       OPENAI_EMBEDDING_URL,
       {
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-ada-002',
         input: texts,
         encoding_format: 'float'
       },

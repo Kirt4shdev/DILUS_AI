@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -32,11 +32,23 @@ export default function AdminPanel() {
   const [totalChunks, setTotalChunks] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Embedding costs state
+  const [embeddingCosts, setEmbeddingCosts] = useState(null);
+  const [loadingCosts, setLoadingCosts] = useState(false);
+
+  // RAG Config state
+  const [ragConfig, setRagConfig] = useState(null);
+  const [loadingRagConfig, setLoadingRagConfig] = useState(false);
+  const [configHistory, setConfigHistory] = useState([]);
+  const [unsavedChanges, setUnsavedChanges] = useState({});
+
   useEffect(() => {
     if (activeTab === 'codex') loadCodexDocs();
     if (activeTab === 'users') loadUsers();
     if (activeTab === 'stats') loadStats();
     if (activeTab === 'chunks') loadChunksHistory();
+    if (activeTab === 'costs') loadEmbeddingCosts();
+    if (activeTab === 'ragcontrol') loadRagConfig();
   }, [activeTab]);
 
   useEffect(() => {
@@ -139,6 +151,81 @@ export default function AdminPanel() {
     }
   };
 
+  const loadEmbeddingCosts = async () => {
+    setLoadingCosts(true);
+    try {
+      const response = await apiClient.get('/admin/embedding-costs/overview');
+      setEmbeddingCosts(response.data);
+    } catch (error) {
+      toast.error('Error cargando costes de embeddings');
+      console.error('Error:', error);
+    } finally {
+      setLoadingCosts(false);
+    }
+  };
+
+  const loadRagConfig = async () => {
+    setLoadingRagConfig(true);
+    try {
+      const response = await apiClient.get('/admin/rag-config');
+      setRagConfig(response.data.config);
+      setUnsavedChanges({});
+    } catch (error) {
+      toast.error('Error cargando configuración del RAG');
+      console.error('Error:', error);
+    } finally {
+      setLoadingRagConfig(false);
+    }
+  };
+
+  const handleConfigChange = (key, value) => {
+    setUnsavedChanges(prev => ({...prev, [key]: value}));
+  };
+
+  const saveRagConfig = async () => {
+    if (Object.keys(unsavedChanges).length === 0) {
+      toast.info('No hay cambios para guardar');
+      return;
+    }
+
+    setLoadingRagConfig(true);
+    try {
+      await apiClient.put('/admin/rag-config', { updates: unsavedChanges });
+      toast.success('Configuración actualizada correctamente');
+      await loadRagConfig();
+    } catch (error) {
+      toast.error('Error actualizando configuración');
+      console.error('Error:', error);
+    } finally {
+      setLoadingRagConfig(false);
+    }
+  };
+
+  const resetRagConfig = async () => {
+    if (!window.confirm('¿Estás seguro de resetear la configuración a los valores por defecto?')) {
+      return;
+    }
+
+    setLoadingRagConfig(true);
+    try {
+      await apiClient.post('/admin/rag-config/reset');
+      toast.success('Configuración reseteada a valores por defecto');
+      await loadRagConfig();
+    } catch (error) {
+      toast.error('Error reseteando configuración');
+      console.error('Error:', error);
+    } finally {
+      setLoadingRagConfig(false);
+    }
+  };
+
+  const getConfigValue = (key) => {
+    if (unsavedChanges.hasOwnProperty(key)) {
+      return unsavedChanges[key];
+    }
+    return ragConfig?.[key]?.value ?? '';
+  };
+
   const handleChunkFilterChange = (key, value) => {
     setChunkFilters(prev => ({ ...prev, [key]: value }));
     setCurrentPage(1);
@@ -202,6 +289,8 @@ export default function AdminPanel() {
     { id: 'codex', name: 'Codex Dilus', icon: FileText },
     { id: 'users', name: 'Usuarios', icon: Users },
     { id: 'chunks', name: 'Análisis Chunks RAG', icon: Activity },
+    { id: 'costs', name: 'Costes Embeddings', icon: DollarSign },
+    { id: 'ragcontrol', name: 'Control del RAG', icon: Settings },
     { id: 'tokenstats', name: 'Estadísticas Tokens', icon: TrendingUp },
     { id: 'stats', name: 'General', icon: BarChart3 }
   ];
@@ -753,8 +842,156 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* Tab: Estadísticas Generales */}
-          {activeTab === 'stats' && !loading && stats && (
+        {/* Tab: Costes Embeddings */}
+        {activeTab === 'costs' && (
+          <div className="space-y-6">
+            {loadingCosts ? (
+              <div className="flex justify-center py-12">
+                <Loader className="w-8 h-8 text-blue-600 animate-spin" />
+              </div>
+            ) : embeddingCosts ? (
+              <>
+                {/* Resumen General */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6 flex items-center">
+                    <DollarSign className="w-5 h-5 mr-2 text-green-600" />
+                    Resumen de Costes (Embeddings)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Operaciones</p>
+                      <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                        {parseInt(embeddingCosts.total.total_operations || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Tokens</p>
+                      <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                        {parseInt(embeddingCosts.total.total_tokens || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Coste Total</p>
+                      <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                        ${parseFloat(embeddingCosts.total.total_cost_usd || 0).toFixed(4)}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Modelo: text-embedding-ada-002
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Por Tipo de Operación */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                    📊 Costes por Tipo de Operación
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Tipo</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 dark:text-gray-300">Operaciones</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 dark:text-gray-300">Tokens</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 dark:text-gray-300">Coste</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 dark:text-gray-300">Avg/Op</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                        {embeddingCosts.byOperation && embeddingCosts.byOperation.map((op, idx) => (
+                          <tr key={idx} className="text-sm">
+                            <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
+                              {op.operation_type === 'document_ingestion' && '📄 Procesamiento Docs'}
+                              {op.operation_type === 'vault_query' && '🔍 Búsqueda Vault'}
+                              {op.operation_type === 'document_query' && '📝 Búsqueda Documento'}
+                              {op.operation_type === 'general_query' && '🌐 Búsqueda General'}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-900 dark:text-gray-100">
+                              {parseInt(op.total_operations).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-900 dark:text-gray-100">
+                              {parseInt(op.total_tokens).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-semibold">
+                              ${parseFloat(op.total_cost_usd).toFixed(4)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
+                              ${parseFloat(op.avg_cost_usd).toFixed(6)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Top Usuarios */}
+                {embeddingCosts.byUser && embeddingCosts.byUser.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                      👥 Top Usuarios por Coste
+                    </h4>
+                    <div className="space-y-3">
+                      {embeddingCosts.byUser.slice(0, 5).map((user, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {user.username || user.email}
+                            </p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                              {parseInt(user.total_operations).toLocaleString()} operaciones • {parseInt(user.total_tokens).toLocaleString()} tokens
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                              ${parseFloat(user.total_cost_usd).toFixed(4)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Documentos */}
+                {embeddingCosts.byDocument && embeddingCosts.byDocument.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                      📚 Top Documentos por Coste
+                    </h4>
+                    <div className="space-y-3">
+                      {embeddingCosts.byDocument.slice(0, 5).map((doc, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {doc.filename}
+                            </p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                              {doc.is_vault_document ? '🔒 Vault' : '📁 Proyecto'} • {parseInt(doc.total_operations).toLocaleString()} ops • {parseInt(doc.total_tokens).toLocaleString()} tokens
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                              ${parseFloat(doc.total_cost_usd).toFixed(4)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                No hay datos de costes disponibles
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Estadísticas Generales */}
+        {activeTab === 'stats' && !loading && stats && (
             <div className="space-y-6">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                 Estadísticas del Sistema
@@ -817,6 +1054,270 @@ export default function AdminPanel() {
               </div>
             </div>
           )}
+
+        {/* Tab: Control del RAG */}
+        {activeTab === 'ragcontrol' && (
+          <div className="space-y-6">
+            {loadingRagConfig ? (
+              <Loading />
+            ) : ragConfig ? (
+              <>
+                {/* Header con botones de acción */}
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Control del RAG
+                  </h3>
+                  <div className="flex space-x-3">
+                    {Object.keys(unsavedChanges).length > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400 text-sm flex items-center">
+                        <Activity className="w-4 h-4 mr-1" />
+                        {Object.keys(unsavedChanges).length} cambios sin guardar
+                      </span>
+                    )}
+                    <button
+                      onClick={saveRagConfig}
+                      disabled={Object.keys(unsavedChanges).length === 0}
+                      className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Guardar Cambios</span>
+                    </button>
+                    <button
+                      onClick={resetRagConfig}
+                      className="btn-secondary flex items-center space-x-2"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Resetear</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Configuración de Chunking */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                  <h4 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <FileText className="w-5 h-5 mr-2" />
+                    Configuración de Chunking
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Chunk Size */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Tamaño de Chunk (caracteres)
+                      </label>
+                      <input
+                        type="number"
+                        value={getConfigValue('chunk_size')}
+                        onChange={(e) => handleConfigChange('chunk_size', e.target.value)}
+                        min={ragConfig.chunk_size?.minValue}
+                        max={ragConfig.chunk_size?.maxValue}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Rango: {ragConfig.chunk_size?.minValue} - {ragConfig.chunk_size?.maxValue}
+                      </p>
+                    </div>
+
+                    {/* Chunk Overlap */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Overlap (caracteres)
+                      </label>
+                      <input
+                        type="number"
+                        value={getConfigValue('chunk_overlap')}
+                        onChange={(e) => handleConfigChange('chunk_overlap', e.target.value)}
+                        min={ragConfig.chunk_overlap?.minValue}
+                        max={ragConfig.chunk_overlap?.maxValue}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Rango: {ragConfig.chunk_overlap?.minValue} - {ragConfig.chunk_overlap?.maxValue}
+                      </p>
+                    </div>
+
+                    {/* Chunking Method */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Método de Chunking
+                      </label>
+                      <select
+                        value={getConfigValue('chunking_method')}
+                        onChange={(e) => handleConfigChange('chunking_method', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        <option value="fixed">Fixed Size</option>
+                        <option value="sentence">Por Sentencias</option>
+                        <option value="paragraph">Por Párrafos</option>
+                      </select>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Actualmente solo "fixed" está implementado
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Thresholds de Selección */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                  <h4 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <Activity className="w-5 h-5 mr-2" />
+                    Thresholds de Selección de Chunks
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Min Similarity */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Threshold de Similitud Vectorial
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="range"
+                          value={getConfigValue('min_similarity')}
+                          onChange={(e) => handleConfigChange('min_similarity', e.target.value)}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          className="flex-1"
+                        />
+                        <span className="text-lg font-bold text-gray-900 dark:text-white w-16 text-right">
+                          {parseFloat(getConfigValue('min_similarity')).toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {ragConfig.min_similarity?.description}
+                      </p>
+                    </div>
+
+                    {/* Min Hybrid Score */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Threshold de Score Híbrido
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="range"
+                          value={getConfigValue('min_hybrid_score')}
+                          onChange={(e) => handleConfigChange('min_hybrid_score', e.target.value)}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          className="flex-1"
+                        />
+                        <span className="text-lg font-bold text-gray-900 dark:text-white w-16 text-right">
+                          {parseFloat(getConfigValue('min_hybrid_score')).toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {ragConfig.min_hybrid_score?.description}
+                      </p>
+                    </div>
+
+                    {/* Top K */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Número de Chunks (Top K)
+                      </label>
+                      <input
+                        type="number"
+                        value={getConfigValue('top_k')}
+                        onChange={(e) => handleConfigChange('top_k', e.target.value)}
+                        min={ragConfig.top_k?.minValue}
+                        max={ragConfig.top_k?.maxValue}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Rango: {ragConfig.top_k?.minValue} - {ragConfig.top_k?.maxValue}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pesos de Score Híbrido */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                  <h4 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <TrendingUp className="w-5 h-5 mr-2" />
+                    Pesos de Score Híbrido
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Vector Weight */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Peso Vectorial (Semántico)
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="range"
+                          value={getConfigValue('vector_weight')}
+                          onChange={(e) => handleConfigChange('vector_weight', e.target.value)}
+                          min={0}
+                          max={1}
+                          step={0.1}
+                          className="flex-1"
+                        />
+                        <span className="text-lg font-bold text-gray-900 dark:text-white w-16 text-right">
+                          {parseFloat(getConfigValue('vector_weight')).toFixed(1)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Influencia de similitud semántica
+                      </p>
+                    </div>
+
+                    {/* BM25 Weight */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Peso BM25 (Keywords)
+                      </label>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="range"
+                          value={getConfigValue('bm25_weight')}
+                          onChange={(e) => handleConfigChange('bm25_weight', e.target.value)}
+                          min={0}
+                          max={1}
+                          step={0.1}
+                          className="flex-1"
+                        />
+                        <span className="text-lg font-bold text-gray-900 dark:text-white w-16 text-right">
+                          {parseFloat(getConfigValue('bm25_weight')).toFixed(1)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Influencia de coincidencia de palabras clave
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      💡 <strong>Nota:</strong> La suma de vector_weight + bm25_weight debería ser 1.0 para mejores resultados.
+                      Actualmente: {(parseFloat(getConfigValue('vector_weight')) + parseFloat(getConfigValue('bm25_weight'))).toFixed(1)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Info adicional */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2">
+                    ℹ️ Información importante
+                  </h5>
+                  <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-disc list-inside">
+                    <li>Los cambios se aplican inmediatamente a nuevas búsquedas y chunking</li>
+                    <li>Los documentos ya vectorizados no se re-procesan automáticamente</li>
+                    <li>Puedes ver el efecto de los thresholds en la pestaña "Análisis Chunks RAG"</li>
+                    <li>Los valores por defecto están optimizados para español</li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-gray-500 dark:text-gray-400">No se pudo cargar la configuración</p>
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
 
@@ -862,7 +1363,4 @@ function StatCard({ title, value, subtitle, icon: Icon }) {
     </div>
   );
 }
-
-// Icon import para StatCard
-import { FolderOpen } from 'lucide-react';
 

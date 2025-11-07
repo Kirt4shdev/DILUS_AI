@@ -24,19 +24,19 @@ export default function CodexDilusWidget() {
       setProgressMessage('Analizando tu consulta...');
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Paso 2: Buscando en la biblioteca
-      setProgressMessage('Buscando en la biblioteca de documentación...');
+      // Paso 2: Buscando en el Codex Dilus
+      setProgressMessage('Buscando en el Codex Dilus...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const res = await apiClient.post('/vault/query', { query: query.trim() });
       
       // Paso 3: Indicar fuente
       if (res.data.source_type === 'library') {
-        setProgressMessage('✓ Datos encontrados en la biblioteca');
+        setProgressMessage('✓ Datos encontrados en el Codex Dilus');
         await new Promise(resolve => setTimeout(resolve, 300));
         setProgressMessage('Generando respuesta...');
       } else {
-        setProgressMessage('⚠ No hay datos en la biblioteca');
+        setProgressMessage('⚠ No hay datos en el Codex Dilus');
         await new Promise(resolve => setTimeout(resolve, 300));
         setProgressMessage('Buscando información externa en ChatGPT-5...');
       }
@@ -117,7 +117,7 @@ export default function CodexDilusWidget() {
                   {response.source_type === 'library' ? (
                     <>
                       <Database className="w-3 h-3" />
-                      <span>Biblioteca</span>
+                      <span>Codex Dilus</span>
                     </>
                   ) : (
                     <>

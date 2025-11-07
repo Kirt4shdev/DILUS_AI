@@ -7,6 +7,7 @@ import { extractText } from '../services/documentService.js';
 import { ingestDocument } from '../services/ragService.js';
 import { validateFileType } from '../utils/validators.js';
 import { logger } from '../utils/logger.js';
+import { getRagConfig, updateRagConfig, getConfigHistory, resetToDefaults } from '../services/ragConfigService.js';
 
 const router = express.Router();
 
@@ -469,6 +470,233 @@ async function processVaultDocumentVectorization(documentId, buffer, mimetype) {
     throw error;
   }
 }
+
+// ============================================
+// EMBEDDING COSTS
+// ============================================
+
+/**
+ * GET /api/admin/embedding-costs/overview
+ * Obtener resumen de costes de embeddings
+ */
+router.get('/embedding-costs/overview', async (req, res, next) => {
+  try {
+    logger.info('Fetching embedding costs overview');
+
+    // Costes totales
+    const totalResult = await query(`
+      SELECT * FROM get_total_embedding_costs()
+    `);
+
+    // Costes por tipo de operación
+    const byOperationResult = await query(`
+      SELECT * FROM embedding_cost_stats ORDER BY total_cost_usd DESC
+    `);
+
+    // Costes por usuario (top 10)
+    const byUserResult = await query(`
+      SELECT * FROM embedding_cost_by_user 
+      WHERE total_operations > 0
+      ORDER BY total_cost_usd DESC 
+      LIMIT 10
+    `);
+
+    // Costes por documento (top 10)
+    const byDocumentResult = await query(`
+      SELECT * FROM embedding_cost_by_document 
+      WHERE total_operations > 0
+      ORDER BY total_cost_usd DESC 
+      LIMIT 10
+    `);
+
+    // Tendencia últimos 7 días
+    const trendResult = await query(`
+      SELECT 
+        DATE(created_at) as date,
+        operation_type,
+        SUM(tokens_used) as tokens,
+        SUM(cost_usd) as cost
+      FROM embedding_costs
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY DATE(created_at), operation_type
+      ORDER BY date DESC, operation_type
+    `);
+
+    return res.json({
+      total: totalResult.rows[0] || { total_operations: 0, total_tokens: 0, total_cost_usd: 0 },
+      byOperation: byOperationResult.rows,
+      byUser: byUserResult.rows,
+      byDocument: byDocumentResult.rows,
+      trend: trendResult.rows
+    });
+  } catch (error) {
+    logger.error('Error fetching embedding costs', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/embedding-costs/details
+ * Obtener historial detallado de costes de embeddings
+ */
+router.get('/embedding-costs/details', async (req, res, next) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 50, 
+      operation_type, 
+      user_id,
+      start_date,
+      end_date
+    } = req.query;
+
+    const offset = (page - 1) * limit;
+    const filters = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (operation_type) {
+      filters.push(`operation_type = $${paramIndex++}`);
+      params.push(operation_type);
+    }
+
+    if (user_id) {
+      filters.push(`user_id = $${paramIndex++}`);
+      params.push(user_id);
+    }
+
+    if (start_date) {
+      filters.push(`created_at >= $${paramIndex++}`);
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      filters.push(`created_at <= $${paramIndex++}`);
+      params.push(end_date);
+    }
+
+    const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+    // Count total
+    const countResult = await query(
+      `SELECT COUNT(*) FROM embedding_costs ${whereClause}`,
+      params
+    );
+
+    // Get paginated results
+    const results = await query(
+      `SELECT 
+        ec.*,
+        u.username,
+        d.filename
+      FROM embedding_costs ec
+      LEFT JOIN users u ON ec.user_id = u.id
+      LEFT JOIN documents d ON ec.document_id = d.id
+      ${whereClause}
+      ORDER BY ec.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset]
+    );
+
+    return res.json({
+      costs: results.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: parseInt(countResult.rows[0].count)
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching embedding costs details', { error: error.message });
+    next(error);
+  }
+});
+
+// ============================================
+// RAG CONFIGURATION
+// ============================================
+
+/**
+ * GET /api/admin/rag-config
+ * Obtener configuración actual del RAG
+ */
+router.get('/rag-config', async (req, res, next) => {
+  try {
+    logger.info('Fetching RAG configuration');
+    
+    const config = await getRagConfig();
+    
+    return res.json({ config });
+  } catch (error) {
+    logger.error('Error fetching RAG config', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/rag-config
+ * Actualizar configuración del RAG
+ */
+router.put('/rag-config', async (req, res, next) => {
+  try {
+    const { updates } = req.body;
+    
+    if (!updates || typeof updates !== 'object') {
+      return res.status(400).json({ error: 'Updates object required' });
+    }
+
+    logger.info('Updating RAG configuration', { updates, userId: req.user.id });
+    
+    const results = await updateRagConfig(updates, req.user.id);
+    
+    return res.json({ 
+      message: 'Configuration updated',
+      results 
+    });
+  } catch (error) {
+    logger.error('Error updating RAG config', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/rag-config/history
+ * Obtener historial de cambios de configuración
+ */
+router.get('/rag-config/history', async (req, res, next) => {
+  try {
+    const { limit = 50 } = req.query;
+    
+    logger.info('Fetching RAG config history');
+    
+    const history = await getConfigHistory(parseInt(limit));
+    
+    return res.json({ history });
+  } catch (error) {
+    logger.error('Error fetching RAG config history', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/rag-config/reset
+ * Resetear configuración a valores por defecto
+ */
+router.post('/rag-config/reset', async (req, res, next) => {
+  try {
+    logger.info('Resetting RAG configuration to defaults', { userId: req.user.id });
+    
+    const results = await resetToDefaults(req.user.id);
+    
+    return res.json({ 
+      message: 'Configuration reset to defaults',
+      results 
+    });
+  } catch (error) {
+    logger.error('Error resetting RAG config', { error: error.message });
+    next(error);
+  }
+});
 
 export default router;
 
