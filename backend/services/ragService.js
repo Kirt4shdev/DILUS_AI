@@ -201,7 +201,17 @@ export async function searchSimilar(queryText, options = {}) {
       topSimilarity: result.rows[0]?.vector_similarity || 0
     });
 
-    return filteredResults;
+    // Retornar resultados con metadata de filtrado para logging posterior
+    return {
+      chunks: filteredResults,
+      metadata: {
+        totalCandidates: result.rows.length,
+        selectedCount: filteredResults.length,
+        rejectedCount: result.rows.length - filteredResults.length,
+        minSimilarityThreshold: MIN_SIMILARITY,
+        minHybridThreshold: MIN_HYBRID_SCORE
+      }
+    };
   } catch (error) {
     logger.error('Error searching similar chunks', error);
     throw error;
@@ -235,6 +245,85 @@ export async function searchInVault(queryText, options = {}) {
   return searchSimilar(queryText, { ...options, isVaultOnly: true });
 }
 
+/**
+ * Guardar historial de chunks seleccionados/rechazados para análisis
+ */
+export async function logChunkSelection(params) {
+  try {
+    const {
+      chunks = [],
+      queryText,
+      queryEmbedding,
+      operationType,
+      operationSubtype,
+      userId,
+      projectId,
+      metadata
+    } = params;
+
+    if (!chunks || chunks.length === 0) {
+      return;
+    }
+
+    const { minSimilarityThreshold, minHybridThreshold } = metadata || {};
+
+    // Guardar cada chunk en el historial
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const wasSelected = (chunk.vector_similarity >= minSimilarityThreshold) || 
+                         (chunk.hybrid_score >= minHybridThreshold);
+      
+      let rejectionReason = null;
+      if (!wasSelected) {
+        if (chunk.vector_similarity < minSimilarityThreshold && chunk.hybrid_score < minHybridThreshold) {
+          rejectionReason = 'Below both thresholds';
+        }
+      }
+
+      await query(
+        `INSERT INTO chunk_selection_history (
+          chunk_id, chunk_text, chunk_index, document_id, document_name,
+          vector_similarity, bm25_score, hybrid_score,
+          min_similarity_threshold, min_hybrid_threshold,
+          operation_type, operation_subtype, user_id, project_id,
+          query_text, query_embedding_preview,
+          was_selected, rejection_reason, rank_position
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+        [
+          chunk.id,
+          chunk.chunk_text?.substring(0, 500) || '',
+          chunk.chunk_index,
+          chunk.document_id,
+          chunk.filename || null,
+          chunk.vector_similarity,
+          chunk.bm25_score || 0,
+          chunk.hybrid_score,
+          minSimilarityThreshold,
+          minHybridThreshold,
+          operationType,
+          operationSubtype || null,
+          userId || null,
+          projectId || null,
+          queryText?.substring(0, 200) || '',
+          queryEmbedding ? JSON.stringify(queryEmbedding).substring(0, 100) : null,
+          wasSelected,
+          rejectionReason,
+          i + 1
+        ]
+      );
+    }
+
+    logger.debug('Chunk selection history logged', { 
+      chunks: chunks.length, 
+      operationType,
+      operationSubtype 
+    });
+  } catch (error) {
+    // No fallar la operación principal si el logging falla
+    logger.error('Error logging chunk selection', { error: error.message });
+  }
+}
+
 // Importar generateEmbeddings desde embeddingService
 import { generateEmbeddings } from './embeddingService.js';
 
@@ -243,6 +332,7 @@ export default {
   searchSimilar,
   searchInDocument,
   searchInVault,
-  getContextFromChunks
+  getContextFromChunks,
+  logChunkSelection
 };
 

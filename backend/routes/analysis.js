@@ -3,7 +3,7 @@ import { query } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getFile, uploadFile } from '../services/minioService.js';
 import { extractText } from '../services/documentService.js';
-import { searchInDocument } from '../services/ragService.js';
+import { searchInDocument, logChunkSelection } from '../services/ragService.js';
 import { generateWithGPT5Mini, generateWithGPT5Standard, canFitInContext, canFitInStandardContext, parseAIResponse, estimateTokens } from '../services/aiService.js';
 import { fillPrompt, PROMPT_ANALIZAR_PLIEGO, PROMPT_ANALIZAR_CONTRATO, PROMPT_GENERAR_OFERTA, PROMPT_GENERAR_DOCUMENTACION } from '../utils/prompts.js';
 import { generateOferta, generateDocumentacion } from '../services/docgenService.js';
@@ -18,7 +18,7 @@ router.use(authenticateToken);
 /**
  * Helper: Obtener texto completo o contexto RAG de documentos
  */
-async function getDocumentsContext(documentIds, userId, useStandard = false) {
+async function getDocumentsContext(documentIds, userId, useStandard = false, operationContext = {}) {
   const contexts = [];
   
   for (const docId of documentIds) {
@@ -64,7 +64,21 @@ async function getDocumentsContext(documentIds, userId, useStandard = false) {
         tokens: estimateTokens(fullText),
         model: useStandard ? 'gpt-5' : 'gpt-5-mini'
       });
-      const chunks = await searchInDocument(docId, fullText.substring(0, 500));
+      const searchResult = await searchInDocument(docId, fullText.substring(0, 500));
+      const chunks = searchResult.chunks || [];
+      const searchMetadata = searchResult.metadata || {};
+      
+      // Guardar historial de chunks para análisis
+      logChunkSelection({
+        chunks,
+        queryText: fullText.substring(0, 500),
+        operationType: 'analysis',
+        operationSubtype: operationContext.analysisType || 'document_analysis',
+        userId: userId,
+        projectId: operationContext.projectId,
+        metadata: searchMetadata
+      }).catch(err => logger.error('Error logging chunks', err));
+      
       const ragText = chunks.map(c => c.chunk_text).join('\n\n');
       contexts.push({
         filename: doc.filename,
@@ -101,7 +115,10 @@ router.post('/projects/:projectId/analyze/pliego', async (req, res, next) => {
     }
 
     // Obtener contexto (pasando use_standard para aplicar límites correctos)
-    const contexts = await getDocumentsContext(document_ids, req.user.id, use_standard);
+    const contexts = await getDocumentsContext(document_ids, req.user.id, use_standard, {
+      analysisType: 'pliego_tecnico',
+      projectId
+    });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
     // Verificar tamaño final del contexto
@@ -190,7 +207,10 @@ router.post('/projects/:projectId/analyze/contrato', async (req, res, next) => {
     }
 
     // Obtener contexto (pasando use_standard para aplicar límites correctos)
-    const contexts = await getDocumentsContext(document_ids, req.user.id, use_standard);
+    const contexts = await getDocumentsContext(document_ids, req.user.id, use_standard, {
+      analysisType: 'contrato',
+      projectId
+    });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
     // Verificar tamaño final del contexto
@@ -285,7 +305,10 @@ router.post('/projects/:projectId/generate/oferta', async (req, res, next) => {
     const project = projectCheck.rows[0];
 
     // Obtener contexto
-    const contexts = await getDocumentsContext(document_ids, req.user.id);
+    const contexts = await getDocumentsContext(document_ids, req.user.id, false, {
+      analysisType: 'oferta',
+      projectId
+    });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
     // Crear prompt
@@ -374,7 +397,10 @@ router.post('/projects/:projectId/generate/documentacion', async (req, res, next
     }
 
     // Obtener contexto
-    const contexts = await getDocumentsContext(document_ids, req.user.id);
+    const contexts = await getDocumentsContext(document_ids, req.user.id, false, {
+      analysisType: 'documentacion',
+      projectId
+    });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
     // Crear prompt

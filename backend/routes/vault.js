@@ -1,7 +1,7 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { searchInVault, getContextFromChunks } from '../services/ragService.js';
+import { searchInVault, getContextFromChunks, logChunkSelection } from '../services/ragService.js';
 import { generateWithGPT5Mini } from '../services/aiService.js';
 import { fillPrompt, PROMPT_CHAT_VAULT } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
@@ -34,13 +34,24 @@ router.post('/query', async (req, res, next) => {
     });
 
     // Buscar en la biblioteca (RAG)
-    const chunks = await searchInVault(queryText, { topK: 10 });
+    const searchResult = await searchInVault(queryText, { topK: 10 });
+    const chunks = searchResult.chunks || [];
+    const searchMetadata = searchResult.metadata || {};
     
     let aiResponse;
     let sources = [];
     let sourceType = 'none';
 
     if (chunks.length > 0) {
+      // Guardar historial de chunks para análisis
+      logChunkSelection({
+        chunks,
+        queryText,
+        operationType: 'chat',
+        operationSubtype: 'vault_query',
+        userId: req.user.id,
+        metadata: searchMetadata
+      }).catch(err => logger.error('Error logging chunks', err));
       // Se encontraron documentos en la biblioteca
       sourceType = 'library';
       

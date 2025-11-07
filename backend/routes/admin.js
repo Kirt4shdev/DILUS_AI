@@ -285,6 +285,167 @@ router.get('/stats', async (req, res, next) => {
 });
 
 /**
+ * GET /api/admin/chunks/history
+ * Obtener historial de chunks seleccionados
+ */
+router.get('/chunks/history', async (req, res, next) => {
+  try {
+    const { 
+      limit = 100, 
+      offset = 0,
+      operation_type,
+      operation_subtype,
+      was_selected,
+      min_similarity,
+      document_id 
+    } = req.query;
+
+    let sql = `
+      SELECT 
+        csh.*,
+        u.username,
+        p.name as project_name
+      FROM chunk_selection_history csh
+      LEFT JOIN users u ON csh.user_id = u.id
+      LEFT JOIN projects p ON csh.project_id = p.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (operation_type) {
+      sql += ` AND csh.operation_type = $${paramIndex++}`;
+      params.push(operation_type);
+    }
+
+    if (operation_subtype) {
+      sql += ` AND csh.operation_subtype = $${paramIndex++}`;
+      params.push(operation_subtype);
+    }
+
+    if (was_selected !== undefined) {
+      sql += ` AND csh.was_selected = $${paramIndex++}`;
+      params.push(was_selected === 'true');
+    }
+
+    if (min_similarity) {
+      sql += ` AND csh.vector_similarity >= $${paramIndex++}`;
+      params.push(parseFloat(min_similarity));
+    }
+
+    if (document_id) {
+      sql += ` AND csh.document_id = $${paramIndex++}`;
+      params.push(parseInt(document_id));
+    }
+
+    sql += ` ORDER BY csh.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    params.push(parseInt(limit), parseInt(offset));
+
+    const result = await query(sql, params);
+
+    // Obtener total count
+    let countSql = 'SELECT COUNT(*) as total FROM chunk_selection_history WHERE 1=1';
+    const countParams = [];
+    let countParamIndex = 1;
+
+    if (operation_type) {
+      countSql += ` AND operation_type = $${countParamIndex++}`;
+      countParams.push(operation_type);
+    }
+
+    if (operation_subtype) {
+      countSql += ` AND operation_subtype = $${countParamIndex++}`;
+      countParams.push(operation_subtype);
+    }
+
+    if (was_selected !== undefined) {
+      countSql += ` AND was_selected = $${countParamIndex++}`;
+      countParams.push(was_selected === 'true');
+    }
+
+    if (min_similarity) {
+      countSql += ` AND vector_similarity >= $${countParamIndex++}`;
+      countParams.push(parseFloat(min_similarity));
+    }
+
+    if (document_id) {
+      countSql += ` AND document_id = $${countParamIndex++}`;
+      countParams.push(parseInt(document_id));
+    }
+
+    const countResult = await query(countSql, countParams);
+
+    logger.info('Chunk history retrieved', { 
+      adminId: req.user.id, 
+      results: result.rows.length,
+      total: countResult.rows[0].total 
+    });
+
+    return res.json({
+      chunks: result.rows,
+      total: parseInt(countResult.rows[0].total),
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/chunks/stats
+ * Obtener estadísticas de chunks seleccionados
+ */
+router.get('/chunks/stats', async (req, res, next) => {
+  try {
+    // Estadísticas generales
+    const statsResult = await query('SELECT * FROM chunk_selection_stats');
+    
+    // Uso por documento
+    const docUsageResult = await query('SELECT * FROM chunk_usage_by_document LIMIT 20');
+    
+    // Distribución de scores
+    const scoresResult = await query(`
+      SELECT 
+        ROUND(vector_similarity::numeric, 1) as similarity_bucket,
+        ROUND(hybrid_score::numeric, 1) as hybrid_bucket,
+        COUNT(*) as count
+      FROM chunk_selection_history
+      WHERE was_selected = TRUE
+      GROUP BY similarity_bucket, hybrid_bucket
+      ORDER BY similarity_bucket DESC, hybrid_bucket DESC
+      LIMIT 50
+    `);
+
+    // Thresholds actuales vs histórico
+    const thresholdsResult = await query(`
+      SELECT 
+        min_similarity_threshold,
+        min_hybrid_threshold,
+        COUNT(*) as uses,
+        COUNT(*) FILTER (WHERE was_selected = TRUE) as selected,
+        COUNT(*) FILTER (WHERE was_selected = FALSE) as rejected,
+        MIN(created_at) as first_used,
+        MAX(created_at) as last_used
+      FROM chunk_selection_history
+      GROUP BY min_similarity_threshold, min_hybrid_threshold
+      ORDER BY last_used DESC
+    `);
+
+    logger.info('Chunk stats retrieved', { adminId: req.user.id });
+
+    return res.json({
+      overview: statsResult.rows,
+      document_usage: docUsageResult.rows,
+      score_distribution: scoresResult.rows,
+      threshold_history: thresholdsResult.rows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * Procesar vectorización de documento de bóveda en background
  */
 async function processVaultDocumentVectorization(documentId, buffer, mimetype) {

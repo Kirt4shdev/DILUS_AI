@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -18,12 +18,30 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
+  
+  // Chunks RAG state
+  const [chunks, setChunks] = useState([]);
+  const [chunkStats, setChunkStats] = useState(null);
+  const [chunkFilters, setChunkFilters] = useState({
+    operation_type: '',
+    operation_subtype: '',
+    was_selected: '',
+    limit: 50,
+    offset: 0
+  });
+  const [totalChunks, setTotalChunks] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     if (activeTab === 'codex') loadCodexDocs();
     if (activeTab === 'users') loadUsers();
     if (activeTab === 'stats') loadStats();
+    if (activeTab === 'chunks') loadChunksHistory();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'chunks') loadChunksHistory();
+  }, [chunkFilters, currentPage]);
 
   // Auto-refrescar cuando hay documentos procesándose
   useEffect(() => {
@@ -89,6 +107,50 @@ export default function AdminPanel() {
     }
   };
 
+  const loadChunksHistory = async () => {
+    try {
+      setLoading(true);
+      const params = {
+        ...chunkFilters,
+        offset: (currentPage - 1) * chunkFilters.limit
+      };
+      
+      // Eliminar filtros vacíos
+      Object.keys(params).forEach(key => {
+        if (params[key] === '') delete params[key];
+      });
+
+      const response = await apiClient.get('/admin/chunks/history', { params });
+      setChunks(response.data.chunks);
+      setTotalChunks(response.data.total);
+    } catch (error) {
+      toast.error('Error al cargar historial de chunks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadChunkStats = async () => {
+    try {
+      const response = await apiClient.get('/admin/chunks/stats');
+      setChunkStats(response.data);
+    } catch (error) {
+      toast.error('Error al cargar estadísticas de chunks');
+    }
+  };
+
+  const handleChunkFilterChange = (key, value) => {
+    setChunkFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
+  };
+
+  const getScoreColor = (score, type = 'similarity') => {
+    const threshold = type === 'similarity' ? 0.3 : 0.25;
+    if (score >= 0.7) return 'text-green-600 dark:text-green-400 font-semibold';
+    if (score >= threshold) return 'text-yellow-600 dark:text-yellow-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
   const handleUploadVaultDoc = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -139,9 +201,12 @@ export default function AdminPanel() {
   const tabs = [
     { id: 'codex', name: 'Codex Dilus', icon: FileText },
     { id: 'users', name: 'Usuarios', icon: Users },
+    { id: 'chunks', name: 'Análisis Chunks RAG', icon: Activity },
     { id: 'tokenstats', name: 'Estadísticas Tokens', icon: TrendingUp },
     { id: 'stats', name: 'General', icon: BarChart3 }
   ];
+
+  const totalPages = Math.ceil(totalChunks / chunkFilters.limit);
 
   return (
     <div className="min-h-screen bg-stone-100 dark:bg-gray-900">
@@ -359,6 +424,333 @@ export default function AdminPanel() {
           {/* Tab: Estadísticas de Tokens */}
           {activeTab === 'tokenstats' && (
             <TokenStatsView />
+          )}
+
+          {/* Tab: Análisis Chunks RAG */}
+          {activeTab === 'chunks' && !loading && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                📊 Análisis de Chunks RAG
+              </h3>
+
+              {/* Filtros */}
+              <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-6">
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Filtros</h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Tipo de Operación
+                    </label>
+                    <select
+                      value={chunkFilters.operation_type}
+                      onChange={(e) => handleChunkFilterChange('operation_type', e.target.value)}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">Todos</option>
+                      <option value="chat">Chat</option>
+                      <option value="analysis">Análisis</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Subtipo
+                    </label>
+                    <select
+                      value={chunkFilters.operation_subtype}
+                      onChange={(e) => handleChunkFilterChange('operation_subtype', e.target.value)}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">Todos</option>
+                      <option value="vault_query">Consulta Bóveda</option>
+                      <option value="pliego_tecnico">Pliego Técnico</option>
+                      <option value="contrato">Contrato</option>
+                      <option value="oferta">Oferta</option>
+                      <option value="documentacion">Documentación</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Estado
+                    </label>
+                    <select
+                      value={chunkFilters.was_selected}
+                      onChange={(e) => handleChunkFilterChange('was_selected', e.target.value)}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">Todos</option>
+                      <option value="true">Seleccionados</option>
+                      <option value="false">Rechazados</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Por página
+                    </label>
+                    <select
+                      value={chunkFilters.limit}
+                      onChange={(e) => handleChunkFilterChange('limit', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabla de Chunks */}
+              {chunks.length === 0 ? (
+                <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-12 text-center">
+                  <p className="text-gray-600 dark:text-gray-400">No hay chunks registrados con estos filtros</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-stone-100 dark:bg-gray-700">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Fecha/Hora
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Operación
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Documento
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Similitud
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Score Híbrido
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Thresholds
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Estado
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          Usuario
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {chunks.map((chunk) => (
+                        <tr key={chunk.id} className="hover:bg-stone-100 dark:hover:bg-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {new Date(chunk.created_at).toLocaleString('es-ES')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">{chunk.operation_type}</span>
+                              {chunk.operation_subtype && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400">{chunk.operation_subtype}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <div className="max-w-xs truncate text-gray-900 dark:text-gray-100" title={chunk.document_name}>
+                              {chunk.document_name || '-'}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Chunk #{chunk.chunk_index}</div>
+                          </td>
+                          <td className={`px-6 py-4 whitespace-nowrap text-sm ${getScoreColor(chunk.vector_similarity, 'similarity')}`}>
+                            {chunk.vector_similarity.toFixed(3)}
+                          </td>
+                          <td className={`px-6 py-4 whitespace-nowrap text-sm ${getScoreColor(chunk.hybrid_score, 'hybrid')}`}>
+                            {chunk.hybrid_score.toFixed(3)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
+                            <div>Sim: {chunk.min_similarity_threshold?.toFixed(2) || '-'}</div>
+                            <div>Hyb: {chunk.min_hybrid_threshold?.toFixed(2) || '-'}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {chunk.was_selected ? (
+                              <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                ✓ Seleccionado
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                ✗ Rechazado
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {chunk.username || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Paginación */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-b-lg">
+                  <div className="flex-1 flex justify-between sm:hidden">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="btn-secondary disabled:opacity-50"
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="btn-secondary disabled:opacity-50"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">
+                        Mostrando{' '}
+                        <span className="font-medium">{(currentPage - 1) * chunkFilters.limit + 1}</span>
+                        {' - '}
+                        <span className="font-medium">
+                          {Math.min(currentPage * chunkFilters.limit, totalChunks)}
+                        </span>
+                        {' de '}
+                        <span className="font-medium">{totalChunks}</span>
+                        {' resultados'}
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                        <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          «
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          ‹
+                        </button>
+                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {currentPage} / {totalPages}
+                        </span>
+                        <button
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                          className="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          ›
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={currentPage === totalPages}
+                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          »
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Botón para cargar estadísticas */}
+              <div className="flex justify-center">
+                <button
+                  onClick={loadChunkStats}
+                  className="btn-primary"
+                >
+                  📈 Ver Estadísticas Detalladas
+                </button>
+              </div>
+
+              {/* Estadísticas detalladas */}
+              {chunkStats && (
+                <div className="space-y-6 mt-6">
+                  {/* Resumen por operación */}
+                  {chunkStats.overview && chunkStats.overview.length > 0 && (
+                    <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-6">
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                        📊 Resumen por Tipo de Operación
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600">
+                          <thead>
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Operación</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Subtipo</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Total</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Selec.</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Rechaz.</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Avg Sim</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Avg Hybrid</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                            {chunkStats.overview.map((row, idx) => (
+                              <tr key={idx} className="text-sm">
+                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.operation_type}</td>
+                                <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{row.operation_subtype || '-'}</td>
+                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.total_chunks}</td>
+                                <td className="px-4 py-2 text-green-600 dark:text-green-400">{row.selected_chunks}</td>
+                                <td className="px-4 py-2 text-red-600 dark:text-red-400">{row.rejected_chunks}</td>
+                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{parseFloat(row.avg_similarity).toFixed(3)}</td>
+                                <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{parseFloat(row.avg_hybrid_score).toFixed(3)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historial de thresholds */}
+                  {chunkStats.threshold_history && chunkStats.threshold_history.length > 0 && (
+                    <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-6">
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                        ⚙️ Historial de Thresholds Aplicados
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600">
+                          <thead>
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Threshold Sim</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Threshold Hyb</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Usos</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Selec.</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">Rechaz.</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-300">% Éxito</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                            {chunkStats.threshold_history.map((row, idx) => {
+                              const successRate = row.uses > 0 ? (row.selected / row.uses * 100).toFixed(1) : 0;
+                              return (
+                                <tr key={idx} className="text-sm">
+                                  <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.min_similarity_threshold?.toFixed(2) || '-'}</td>
+                                  <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.min_hybrid_threshold?.toFixed(2) || '-'}</td>
+                                  <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.uses}</td>
+                                  <td className="px-4 py-2 text-green-600 dark:text-green-400">{row.selected}</td>
+                                  <td className="px-4 py-2 text-red-600 dark:text-red-400">{row.rejected}</td>
+                                  <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{successRate}%</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Tab: Estadísticas Generales */}
