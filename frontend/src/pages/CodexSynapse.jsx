@@ -77,7 +77,7 @@ function ClusterCenter({ cluster, visible }) {
       </mesh>
       <Html position={[cluster.x, cluster.y + 0.1, cluster.z]}>
         <div className="bg-gray-900/90 text-white text-xs px-2 py-1 rounded shadow-lg border border-gray-700">
-          Cluster {cluster.id} ({cluster.size})
+          {cluster.theme || `Cluster ${cluster.id}`} ({cluster.size})
         </div>
       </Html>
     </group>
@@ -272,7 +272,12 @@ export default function CodexSynapse() {
               <input
                 type="number"
                 value={nClusters}
-                onChange={(e) => setNClusters(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (!isNaN(value) && value >= 2 && value <= 20) {
+                    setNClusters(value);
+                  }
+                }}
                 min={2}
                 max={20}
                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"

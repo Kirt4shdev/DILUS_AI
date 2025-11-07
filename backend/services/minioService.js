@@ -45,10 +45,22 @@ export async function initMinIO() {
  */
 export async function uploadFile(filename, buffer, mimetype, metadata = {}) {
   try {
-    const key = `${Date.now()}_${filename}`;
+    // Sanitizar nombre de archivo para evitar problemas con caracteres especiales
+    // Preservar la extensión
+    const extension = filename.substring(filename.lastIndexOf('.'));
+    const baseName = filename.substring(0, filename.lastIndexOf('.'));
+    
+    // Reemplazar caracteres problemáticos pero mantener tildes, ñ, etc.
+    const sanitizedBaseName = baseName
+      .replace(/[<>:"|?*]/g, '_') // Solo reemplazar caracteres realmente problemáticos
+      .trim();
+    
+    const sanitizedFilename = `${sanitizedBaseName}${extension}`;
+    const key = `${Date.now()}_${sanitizedFilename}`;
     
     logger.debug('Uploading file to MinIO', { 
-      key, 
+      originalFilename: filename,
+      sanitizedKey: key,
       size: buffer.length,
       mimetype 
     });
@@ -58,10 +70,13 @@ export async function uploadFile(filename, buffer, mimetype, metadata = {}) {
       Key: key,
       Body: buffer,
       ContentType: mimetype,
-      Metadata: metadata
+      Metadata: {
+        ...metadata,
+        originalFilename: filename // Guardar nombre original en metadata
+      }
     }));
 
-    logger.info('File uploaded to MinIO', { key });
+    logger.info('File uploaded to MinIO', { key, originalFilename: filename });
 
     return key;
   } catch (error) {

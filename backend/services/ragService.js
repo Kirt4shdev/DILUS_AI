@@ -89,15 +89,23 @@ export async function ingestDocument(documentId, text, metadata = {}) {
   let totalTokens = 0;
   
   try {
-    logger.info('Starting document ingestion', { documentId });
+    logger.info('Starting document ingestion', { 
+      documentId,
+      textLength: text?.length || 0,
+      textPreview: text?.substring(0, 100) || 'EMPTY'
+    });
 
     // Obtener parámetros dinámicos
     const params = await getRAGParams();
+    logger.debug('RAG params loaded', { params });
 
     // Obtener info del documento para logging de costes
-    const docResult = await query('SELECT uploaded_by, project_id FROM documents WHERE id = $1', [documentId]);
+    const docResult = await query('SELECT uploaded_by, project_id, filename FROM documents WHERE id = $1', [documentId]);
     const userId = docResult.rows[0]?.uploaded_by;
     const projectId = docResult.rows[0]?.project_id;
+    const filename = docResult.rows[0]?.filename;
+
+    logger.info('Document info retrieved', { documentId, filename, userId, projectId });
 
     // Actualizar estado a processing
     await query(
@@ -107,13 +115,15 @@ export async function ingestDocument(documentId, text, metadata = {}) {
 
     // Dividir en chunks con parámetros dinámicos
     const chunkingMethod = await getConfigValue('chunking_method', 'fixed');
+    logger.info('Starting chunking', { documentId, method: chunkingMethod, chunkSize: params.chunkSize, overlap: params.chunkOverlap });
+    
     const chunks = chunkText(text, params.chunkSize, params.chunkOverlap, chunkingMethod);
     
     if (chunks.length === 0) {
       throw new Error('No se pudieron extraer chunks del documento');
     }
 
-    logger.info('Document chunked', { documentId, chunks: chunks.length });
+    logger.info('Document chunked successfully', { documentId, chunks: chunks.length });
 
     // Generar embeddings para cada chunk (en batches de 10)
     const batchSize = 10;
@@ -184,7 +194,20 @@ export async function ingestDocument(documentId, text, metadata = {}) {
       duration
     };
   } catch (error) {
-    logger.error('Error ingesting document', { documentId, error: error.message });
+    logger.error('Error ingesting document', { 
+      documentId, 
+      errorMessage: error.message,
+      errorStack: error.stack,
+      errorType: error.constructor.name,
+      errorDetails: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    
+    // Log completo a consola para debug
+    console.error('=== FULL ERROR DETAILS ===');
+    console.error('Document ID:', documentId);
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    console.error('========================');
     
     // Actualizar estado a failed
     await query(

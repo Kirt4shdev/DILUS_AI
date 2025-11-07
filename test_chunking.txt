@@ -1,0 +1,62 @@
+INTRODUCCIÓN AL PROYECTO DE INFRAESTRUCTURA
+
+Este documento describe las especificaciones técnicas para el proyecto de modernización de infraestructuras digitales. El proyecto tiene como objetivo principal mejorar la conectividad y eficiencia operativa.
+
+OBJETIVOS PRINCIPALES
+
+Los objetivos del proyecto son los siguientes:
+- Implementar una red de fibra óptica de alta velocidad
+- Actualizar los sistemas de seguridad y monitoreo
+- Reducir los tiempos de respuesta en un 50%
+- Garantizar disponibilidad del 99.9%
+
+ALCANCE DEL PROYECTO
+
+El alcance incluye todas las instalaciones del cliente distribuidas en tres regiones geográficas. Se contempla la instalación de equipamiento nuevo y la migración de sistemas legados.
+
+La primera fase comprenderá la región norte con 15 sedes. La segunda fase abarcará la región centro con 20 sedes. Finalmente, la tercera fase cubrirá la región sur con 12 sedes.
+
+REQUISITOS TÉCNICOS
+
+Sistema de Comunicaciones:
+El sistema debe soportar comunicaciones bidireccionales en tiempo real. Se requiere implementar protocolos de encriptación AES-256.
+
+Infraestructura de Red:
+La red principal utilizará switches Cisco Catalyst 9300. Los puntos de acceso serán Aruba AP-515. El cableado será categoría 6A certificado.
+
+Sistema de Monitoreo:
+Se instalará una plataforma de monitoreo centralizada basada en Zabbix. Esta plataforma permitirá supervisar todos los dispositivos de red en tiempo real.
+
+CRONOGRAMA DE EJECUCIÓN
+
+Mes 1-2: Planificación detallada y diseño de arquitectura.
+Mes 3-4: Adquisición de equipamiento y materiales.
+Mes 5-8: Instalación en región norte.
+Mes 9-12: Instalación en región centro.
+Mes 13-16: Instalación en región sur.
+Mes 17-18: Pruebas integrales y puesta en marcha.
+
+PRESUPUESTO
+
+El presupuesto total estimado es de 2.5 millones de euros, distribuidos en:
+- Equipamiento: 1.2 millones
+- Instalación: 800,000 euros
+- Consultoría: 300,000 euros
+- Contingencias: 200,000 euros
+
+EQUIPO DE TRABAJO
+
+Director de Proyecto: Responsable de la coordinación general y toma de decisiones estratégicas.
+
+Ingeniero Jefe: Supervisará todos los aspectos técnicos de la implementación.
+
+Coordinador de Operaciones: Gestionará la logística y coordinación entre equipos.
+
+Técnicos Especialistas: Equipo de 10 técnicos certificados para la instalación.
+
+CONCLUSIONES
+
+Este proyecto representa una inversión significativa en la modernización tecnológica. Los beneficios esperados incluyen mayor eficiencia operativa y reducción de costos a largo plazo.
+
+Se recomienda aprobar el inicio del proyecto para cumplir con los plazos establecidos. El equipo está preparado para comenzar la ejecución inmediata tras la aprobación.
+

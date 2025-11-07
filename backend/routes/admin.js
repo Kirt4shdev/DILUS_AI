@@ -128,10 +128,20 @@ router.delete('/vault/documents/:id', async (req, res, next) => {
     // Eliminar de MinIO
     await deleteFile(document.file_path);
 
-    // Eliminar de base de datos
+    // Eliminar todos los registros relacionados en orden (por foreign keys)
+    // 1. Chunk selection history
+    await query('DELETE FROM chunk_selection_history WHERE document_id = $1', [id]);
+    
+    // 2. Embedding costs
+    await query('DELETE FROM embedding_costs WHERE document_id = $1', [id]);
+    
+    // 3. Embeddings
+    await query('DELETE FROM embeddings WHERE document_id = $1', [id]);
+    
+    // 4. Finalmente, el documento
     await query('DELETE FROM documents WHERE id = $1', [id]);
 
-    logger.info('Vault document deleted', { documentId: id, adminId: req.user.id });
+    logger.info('Vault document deleted with all related data', { documentId: id, adminId: req.user.id });
 
     return res.json({ message: 'Documento de bóveda eliminado exitosamente' });
   } catch (error) {
@@ -451,10 +461,24 @@ router.get('/chunks/stats', async (req, res, next) => {
  */
 async function processVaultDocumentVectorization(documentId, buffer, mimetype) {
   try {
+    logger.info('Starting vault document vectorization', { 
+      documentId, 
+      bufferSize: buffer?.length || 0,
+      mimetype 
+    });
+
     // Extraer texto
+    logger.info('Extracting text from buffer', { documentId, mimetype });
     const text = await extractText(buffer, mimetype);
+    
+    logger.info('Text extracted successfully', { 
+      documentId, 
+      textLength: text?.length || 0,
+      textPreview: text?.substring(0, 200) || 'EMPTY'
+    });
 
     // Ingerir en RAG
+    logger.info('Starting RAG ingestion', { documentId });
     await ingestDocument(documentId, text, {
       mimetype,
       source: 'vault',
@@ -465,8 +489,21 @@ async function processVaultDocumentVectorization(documentId, buffer, mimetype) {
   } catch (error) {
     logger.error('Vault document vectorization failed', { 
       documentId, 
-      error: error.message 
+      error: error.message,
+      errorStack: error.stack,
+      errorType: error.constructor.name
     });
+    
+    // Actualizar estado a failed
+    try {
+      await query(
+        'UPDATE documents SET vectorization_status = $1, vectorization_error = $2 WHERE id = $3',
+        ['failed', error.message, documentId]
+      );
+    } catch (updateError) {
+      logger.error('Failed to update document status', { documentId, updateError: updateError.message });
+    }
+    
     throw error;
   }
 }

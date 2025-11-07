@@ -34,8 +34,10 @@ DB_CONFIG = {
 }
 
 def get_db_connection():
-    """Crear conexión a PostgreSQL"""
-    return psycopg2.connect(**DB_CONFIG)
+    """Crear conexión a PostgreSQL con soporte UTF-8"""
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.set_client_encoding('UTF8')
+    return conn
 
 def fetch_embeddings_from_db(filters=None):
     """
@@ -379,10 +381,14 @@ def visualize():
         return jsonify(result)
         
     except Exception as e:
-        return jsonify({
+        import traceback
+        error_details = {
             'error': str(e),
-            'type': type(e).__name__
-        }), 500
+            'type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        }
+        print(f"ERROR en /api/visualize: {error_details}")
+        return jsonify(error_details), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8091, debug=True)

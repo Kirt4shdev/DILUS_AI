@@ -6,6 +6,7 @@ import { generateWithGPT5Mini } from '../services/aiService.js';
 import { fillPrompt, PROMPT_CHAT_VAULT } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 import { logTokenUsage } from '../services/tokenStatsService.js';
+import { getConfigValue } from '../services/ragConfigService.js';
 
 const router = express.Router();
 
@@ -33,10 +34,13 @@ router.post('/query', async (req, res, next) => {
       historyLength: hasHistory ? conversation_history.length : 0
     });
 
+    // Obtener configuración dinámica de top_k
+    const topK = await getConfigValue('top_k', 5);
+
     // Buscar en la biblioteca (RAG)
-  const searchResult = await searchInVault(queryText, { topK: 10, userId: req.user.id });
-  const chunks = searchResult.chunks || [];
-  const searchMetadata = searchResult.metadata || {};
+    const searchResult = await searchInVault(queryText, { topK, userId: req.user.id });
+    const chunks = searchResult.chunks || [];
+    const searchMetadata = searchResult.metadata || {};
     
     let aiResponse;
     let sources = [];

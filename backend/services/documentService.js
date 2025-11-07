@@ -1,22 +1,116 @@
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
+import axios from 'axios';
+import FormData from 'form-data';
 import { logger } from '../utils/logger.js';
+
+const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://ocrservice:8092';
 
 /**
  * Extraer texto de PDF
  */
 export async function extractTextFromPDF(buffer) {
   try {
-    logger.debug('Extracting text from PDF');
+    logger.debug('Extracting text from PDF', { bufferSize: buffer.length });
     const data = await pdfParse(buffer);
+    
+    const textLength = data.text?.length || 0;
+    const textPreview = data.text?.substring(0, 200) || '(EMPTY)';
+    const hasText = data.text && data.text.trim().length > 0;
+    
     logger.info('PDF text extracted', { 
       pages: data.numpages, 
-      textLength: data.text.length 
+      textLength,
+      textPreview,
+      hasText,
+      isLikelyScanned: !hasText && data.numpages > 0
     });
+    
+    // Si el PDF parece ser solo imágenes, aplicar OCR automáticamente
+    if (!hasText && data.numpages > 0) {
+      logger.warn('PDF appears to be scanned images, applying OCR...', {
+        pages: data.numpages,
+        bufferSize: buffer.length
+      });
+      
+      try {
+        const ocrText = await applyOCR(buffer, 'spa'); // español por defecto
+        logger.info('OCR completed successfully', {
+          pages: data.numpages,
+          ocrTextLength: ocrText.length,
+          ocrPreview: ocrText.substring(0, 200)
+        });
+        return ocrText;
+      } catch (ocrError) {
+        logger.error('OCR failed', { error: ocrError.message });
+        throw new Error(`El PDF es un documento escaneado sin texto. Se intentó aplicar OCR pero falló: ${ocrError.message}`);
+      }
+    }
+    
     return data.text;
   } catch (error) {
-    logger.error('Error extracting text from PDF', error);
-    throw new Error(`Error al extraer texto del PDF: ${error.message}`);
+    logger.error('Error extracting text from PDF', { 
+      error: error.message,
+      stack: error.stack 
+    });
+    throw error;
+  }
+}
+
+/**
+ * Aplicar OCR a un PDF escaneado
+ */
+async function applyOCR(buffer, language = 'spa') {
+  try {
+    logger.info('Calling OCR service', { 
+      ocrServiceUrl: OCR_SERVICE_URL,
+      bufferSize: buffer.length,
+      language 
+    });
+    
+    // Crear FormData para enviar el archivo
+    const formData = new FormData();
+    formData.append('file', buffer, {
+      filename: 'document.pdf',
+      contentType: 'application/pdf'
+    });
+    formData.append('language', language);
+    formData.append('dpi', '300');
+    
+    // Llamar al servicio OCR
+    const response = await axios.post(
+      `${OCR_SERVICE_URL}/ocr/pdf`,
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders()
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 300000 // 5 minutos timeout para documentos grandes
+      }
+    );
+    
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'OCR failed');
+    }
+    
+    logger.info('OCR service response', {
+      pages: response.data.pages,
+      pagesWithText: response.data.pages_with_text,
+      totalCharacters: response.data.total_characters,
+      avgConfidence: response.data.avg_confidence
+    });
+    
+    return response.data.text;
+    
+  } catch (error) {
+    logger.error('Error calling OCR service', {
+      error: error.message,
+      ocrServiceUrl: OCR_SERVICE_URL,
+      responseData: error.response?.data
+    });
+    throw new Error(`OCR service error: ${error.message}`);
   }
 }
 
@@ -79,35 +173,68 @@ export async function extractText(buffer, mimetype) {
  * @param {string} method - Método: 'fixed', 'sentence', 'paragraph'
  */
 export function chunkText(text, chunkSize = 1000, overlap = 200, method = 'fixed') {
-  if (!text || text.trim().length === 0) {
-    return [];
+  try {
+    if (!text || text.trim().length === 0) {
+      logger.warn('Empty text provided for chunking');
+      return [];
+    }
+
+    // Protección contra textos extremadamente grandes
+    const MAX_TEXT_LENGTH = 10_000_000; // 10 millones de caracteres (~5000 páginas)
+    if (text.length > MAX_TEXT_LENGTH) {
+      logger.warn('Text too large, truncating', { 
+        originalLength: text.length, 
+        maxLength: MAX_TEXT_LENGTH 
+      });
+      text = text.substring(0, MAX_TEXT_LENGTH);
+    }
+
+    let chunks = [];
+
+    logger.info('Starting chunking process', { 
+      method, 
+      textLength: text.length, 
+      chunkSize, 
+      overlap 
+    });
+
+    switch (method) {
+      case 'paragraph':
+        chunks = chunkByParagraph(text, chunkSize, overlap);
+        break;
+      
+      case 'sentence':
+        chunks = chunkBySentence(text, chunkSize, overlap);
+        break;
+      
+      case 'fixed':
+      default:
+        chunks = chunkByFixedSize(text, chunkSize, overlap);
+        break;
+    }
+
+    logger.info('Text chunked successfully', { 
+      method,
+      totalChunks: chunks.length, 
+      chunkSize, 
+      overlap 
+    });
+
+    return chunks;
+  } catch (error) {
+    logger.error('Error during chunking', {
+      error: error.message,
+      stack: error.stack,
+      method,
+      textLength: text?.length || 0
+    });
+    console.error('=== CHUNKING ERROR ===');
+    console.error('Method:', method);
+    console.error('Text length:', text?.length);
+    console.error('Error:', error);
+    console.error('======================');
+    throw error;
   }
-
-  let chunks = [];
-
-  switch (method) {
-    case 'paragraph':
-      chunks = chunkByParagraph(text, chunkSize, overlap);
-      break;
-    
-    case 'sentence':
-      chunks = chunkBySentence(text, chunkSize, overlap);
-      break;
-    
-    case 'fixed':
-    default:
-      chunks = chunkByFixedSize(text, chunkSize, overlap);
-      break;
-  }
-
-  logger.debug('Text chunked', { 
-    method,
-    totalChunks: chunks.length, 
-    chunkSize, 
-    overlap 
-  });
-
-  return chunks;
 }
 
 /**
@@ -138,75 +265,157 @@ function chunkByFixedSize(text, chunkSize, overlap) {
 /**
  * Chunking por párrafos
  * Divide el texto por párrafos y los agrupa si son pequeños
+ * Detecta párrafos por:
+ * 1. Doble salto de línea (\n\n)
+ * 2. Punto seguido de salto de línea y mayúscula
+ * 3. Salto de línea cuando la siguiente línea empieza con mayúscula/número
  */
 function chunkByParagraph(text, maxSize, overlap) {
-  // Dividir por párrafos (dos o más saltos de línea)
-  const paragraphs = text.split(/\n\s*\n+/).filter(p => p.trim().length > 0);
-  
-  const chunks = [];
-  let currentChunk = '';
-  let startIndex = 0;
-
-  for (let i = 0; i < paragraphs.length; i++) {
-    const paragraph = paragraphs[i].trim();
+  try {
+    // Normalizar saltos de línea
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     
-    // Si el párrafo solo ya excede el tamaño, dividirlo
-    if (paragraph.length > maxSize) {
-      // Guardar chunk actual si existe
-      if (currentChunk.trim().length > 0) {
-        chunks.push({
-          text: currentChunk.trim(),
-          startIndex,
-          endIndex: text.indexOf(currentChunk) + currentChunk.length
-        });
+    // Dividir por párrafos usando múltiples criterios
+    const lines = text.split('\n');
+    const paragraphs = [];
+    let currentParagraph = '';
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Línea vacía = fin de párrafo
+      if (line.length === 0) {
+        if (currentParagraph.trim().length > 0) {
+          paragraphs.push(currentParagraph.trim());
+          currentParagraph = '';
+        }
+        continue;
       }
       
-      // Dividir el párrafo largo por tamaño fijo
-      const largeParagraphChunks = chunkByFixedSize(paragraph, maxSize, overlap);
-      chunks.push(...largeParagraphChunks);
-      
-      currentChunk = '';
-      startIndex = text.indexOf(paragraph) + paragraph.length;
-      continue;
+      // Si la línea anterior terminaba en punto y esta empieza con mayúscula/número = nuevo párrafo
+      if (currentParagraph.length > 0) {
+        const lastChar = currentParagraph.trim().slice(-1);
+        const firstChar = line.charAt(0);
+        
+        // Detectar inicio de nuevo párrafo
+        const endsWithPunctuation = /[.!?:]$/.test(currentParagraph.trim());
+        const startsWithCapitalOrNumber = /^[A-ZÁÉÍÓÚÑ0-9\-•\*]/.test(firstChar);
+        
+        if (endsWithPunctuation && startsWithCapitalOrNumber) {
+          // Nuevo párrafo
+          paragraphs.push(currentParagraph.trim());
+          currentParagraph = line;
+        } else {
+          // Continuar párrafo actual
+          currentParagraph += ' ' + line;
+        }
+      } else {
+        // Primer línea del párrafo
+        currentParagraph = line;
+      }
     }
     
-    // Si agregar este párrafo excede el tamaño, guardar el chunk actual
-    if (currentChunk.length + paragraph.length + 2 > maxSize && currentChunk.length > 0) {
-      chunks.push({
-        text: currentChunk.trim(),
-        startIndex,
-        endIndex: text.indexOf(currentChunk) + currentChunk.length
-      });
-      
-      // Empezar nuevo chunk con overlap (último párrafo del chunk anterior)
-      const lastParagraphIndex = currentChunk.lastIndexOf('\n\n');
-      if (lastParagraphIndex > 0 && overlap > 0) {
-        currentChunk = currentChunk.slice(lastParagraphIndex + 2) + '\n\n' + paragraph;
-      } else {
-        currentChunk = paragraph;
-      }
-      startIndex = text.indexOf(paragraph);
-    } else {
-      // Agregar párrafo al chunk actual
-      if (currentChunk.length > 0) {
-        currentChunk += '\n\n' + paragraph;
-      } else {
-        currentChunk = paragraph;
-        startIndex = text.indexOf(paragraph);
-      }
+    // Agregar último párrafo
+    if (currentParagraph.trim().length > 0) {
+      paragraphs.push(currentParagraph.trim());
     }
-  }
-
-  // Agregar el último chunk
-  if (currentChunk.trim().length > 0) {
-    chunks.push({
-      text: currentChunk.trim(),
-      startIndex,
-      endIndex: text.length
+    
+    logger.debug('Paragraphs split', { 
+      count: paragraphs.length,
+      avgLength: Math.round(paragraphs.reduce((sum, p) => sum + p.length, 0) / paragraphs.length)
     });
+    
+    // Agrupar párrafos en chunks
+    const chunks = [];
+    let currentChunk = [];
+    let currentLength = 0;
+    
+    for (let i = 0; i < paragraphs.length; i++) {
+      const paragraph = paragraphs[i];
+      
+      // Si un solo párrafo excede maxSize, dividirlo por tamaño fijo
+      if (paragraph.length > maxSize) {
+        // Guardar chunk actual si existe
+        if (currentChunk.length > 0) {
+          chunks.push({
+            text: currentChunk.join('\n\n'),
+            startIndex: 0,
+            endIndex: 0
+          });
+          currentChunk = [];
+          currentLength = 0;
+        }
+        
+        // Dividir párrafo largo
+        const subChunks = chunkByFixedSize(paragraph, maxSize, overlap);
+        chunks.push(...subChunks);
+        continue;
+      }
+      
+      // Calcular tamaño con separadores
+      const paragraphWithSeparator = paragraph.length + (currentChunk.length > 0 ? 2 : 0); // +2 for \n\n
+      
+      // Si agregar este párrafo excede el tamaño, cerrar chunk actual
+      if (currentLength + paragraphWithSeparator > maxSize && currentChunk.length > 0) {
+        chunks.push({
+          text: currentChunk.join('\n\n'),
+          startIndex: 0,
+          endIndex: 0
+        });
+        
+        // Aplicar overlap: incluir último(s) párrafo(s) del chunk anterior
+        currentChunk = [];
+        currentLength = 0;
+        
+        if (overlap > 0 && chunks.length > 0) {
+          // Tomar párrafos del final del chunk anterior para overlap
+          const prevChunkParagraphs = chunks[chunks.length - 1].text.split('\n\n');
+          let overlapText = '';
+          
+          for (let j = prevChunkParagraphs.length - 1; j >= 0 && overlapText.length < overlap; j--) {
+            overlapText = prevChunkParagraphs[j] + (overlapText ? '\n\n' + overlapText : '');
+          }
+          
+          if (overlapText.length > 0) {
+            currentChunk.push(overlapText);
+            currentLength = overlapText.length + 2; // +2 for separator with next paragraph
+          }
+        }
+        
+        currentChunk.push(paragraph);
+        currentLength += paragraph.length;
+      } else {
+        // Agregar párrafo al chunk actual
+        currentChunk.push(paragraph);
+        currentLength += paragraphWithSeparator;
+      }
+    }
+    
+    // Agregar último chunk
+    if (currentChunk.length > 0) {
+      chunks.push({
+        text: currentChunk.join('\n\n'),
+        startIndex: 0,
+        endIndex: 0
+      });
+    }
+    
+    logger.info('Paragraph chunking completed', {
+      paragraphsFound: paragraphs.length,
+      chunksCreated: chunks.length,
+      avgChunkSize: Math.round(chunks.reduce((sum, c) => sum + c.text.length, 0) / chunks.length)
+    });
+    
+    return chunks;
+    
+  } catch (error) {
+    logger.error('Error in chunkByParagraph', { 
+      error: error.message, 
+      stack: error.stack 
+    });
+    logger.warn('Falling back to fixed-size chunking');
+    return chunkByFixedSize(text, maxSize, overlap);
   }
-
-  return chunks;
 }
 
 /**
@@ -214,6 +423,7 @@ function chunkByParagraph(text, maxSize, overlap) {
  * Divide el texto por sentencias y las agrupa
  */
 function chunkBySentence(text, maxSize, overlap) {
+  try {
   // Dividir por sentencias (punto seguido de espacio y mayúscula, o punto final)
   const sentenceRegex = /[.!?]+[\s]+(?=[A-Z])|[.!?]+$/g;
   const sentences = [];
@@ -302,16 +512,22 @@ function chunkBySentence(text, maxSize, overlap) {
     }
   }
 
-  // Agregar el último chunk
-  if (currentChunk.trim().length > 0) {
-    chunks.push({
-      text: currentChunk.trim(),
-      startIndex,
-      endIndex: text.length
-    });
+    // Agregar el último chunk
+    if (currentChunk.trim().length > 0) {
+      chunks.push({
+        text: currentChunk.trim(),
+        startIndex,
+        endIndex: text.length
+      });
+    }
+    
+    return chunks;
+  } catch (error) {
+    logger.error('Error in chunkBySentence', { error: error.message, stack: error.stack });
+    // Fallback a chunking fijo si falla
+    logger.warn('Falling back to fixed-size chunking');
+    return chunkByFixedSize(text, maxSize, overlap);
   }
-
-  return chunks;
 }
 
 export default {
