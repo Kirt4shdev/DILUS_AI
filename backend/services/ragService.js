@@ -6,8 +6,8 @@ import { logger } from '../utils/logger.js';
 const CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE) || 1000;
 const CHUNK_OVERLAP = parseInt(process.env.RAG_CHUNK_OVERLAP) || 200;
 const TOP_K = parseInt(process.env.RAG_TOP_K) || 5;
-// Nota: SIMILARITY_THRESHOLD eliminado del filtro WHERE para permitir recuperación de chunks
-// con similitudes más bajas. El hybrid_score ya ordena por relevancia y topK limita resultados.
+const MIN_SIMILARITY = parseFloat(process.env.RAG_MIN_SIMILARITY) || 0.3; // Filtro mínimo muy bajo
+const MIN_HYBRID_SCORE = parseFloat(process.env.RAG_MIN_HYBRID_SCORE) || 0.25; // Filtro mínimo muy bajo
 
 /**
  * Ingerir documento: chunking + embeddings + guardar
@@ -189,12 +189,19 @@ export async function searchSimilar(queryText, options = {}) {
 
     const result = await query(sql, params);
 
+    // Filtro muy suave solo para eliminar chunks extremadamente irrelevantes
+    const filteredResults = result.rows.filter(row => 
+      row.vector_similarity >= MIN_SIMILARITY || row.hybrid_score >= MIN_HYBRID_SCORE
+    );
+
     logger.info('Search completed', { 
-      results: result.rows.length,
-      topScore: result.rows[0]?.hybrid_score || 0
+      totalResults: result.rows.length,
+      filteredResults: filteredResults.length,
+      topScore: result.rows[0]?.hybrid_score || 0,
+      topSimilarity: result.rows[0]?.vector_similarity || 0
     });
 
-    return result.rows;
+    return filteredResults;
   } catch (error) {
     logger.error('Error searching similar chunks', error);
     throw error;
