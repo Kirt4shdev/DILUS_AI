@@ -54,7 +54,7 @@ router.post('/register', async (req, res, next) => {
 
     logger.info('User registered', { userId: user.id, username: user.username });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Usuario registrado exitosamente',
       token,
       user: {
@@ -116,7 +116,7 @@ router.post('/login', async (req, res, next) => {
 
     logger.info('User logged in', { userId: user.id, username: user.username });
 
-    res.json({
+    return res.json({
       message: 'Login exitoso',
       token,
       user: {
@@ -139,7 +139,7 @@ router.post('/login', async (req, res, next) => {
  */
 router.get('/me', authenticateToken, async (req, res, next) => {
   try {
-    res.json({
+    return res.json({
       user: {
         id: req.user.id,
         username: req.user.username,

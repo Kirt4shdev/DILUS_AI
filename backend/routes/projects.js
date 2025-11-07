@@ -29,7 +29,7 @@ router.get('/', async (req, res, next) => {
 
     const result = await query(sql, params);
 
-    res.json({
+    return res.json({
       projects: result.rows,
       total: result.rows.length
     });
@@ -55,7 +55,7 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Proyecto no encontrado' });
     }
 
-    res.json({ project: result.rows[0] });
+    return res.json({ project: result.rows[0] });
   } catch (error) {
     next(error);
   }
@@ -90,7 +90,7 @@ router.post('/', async (req, res, next) => {
       name: project.name 
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Proyecto creado exitosamente',
       project
     });
@@ -156,7 +156,7 @@ router.put('/:id', async (req, res, next) => {
 
     logger.info('Project updated', { projectId: id, userId: req.user.id });
 
-    res.json({
+    return res.json({
       message: 'Proyecto actualizado exitosamente',
       project: result.rows[0]
     });
@@ -188,7 +188,7 @@ router.delete('/:id', async (req, res, next) => {
 
     logger.info('Project deleted', { projectId: id, userId: req.user.id });
 
-    res.json({ message: 'Proyecto eliminado exitosamente' });
+    return res.json({ message: 'Proyecto eliminado exitosamente' });
   } catch (error) {
     next(error);
   }

@@ -77,7 +77,7 @@ router.post('/vault/documents', upload.single('file'), async (req, res, next) =>
       });
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Documento subido a la bóveda exitosamente. Procesando vectorización...',
       document
     });
@@ -96,7 +96,7 @@ router.get('/vault/documents', async (req, res, next) => {
       'SELECT * FROM documents WHERE is_vault_document = TRUE ORDER BY created_at DESC'
     );
 
-    res.json({
+    return res.json({
       documents: result.rows,
       total: result.rows.length
     });
@@ -132,7 +132,7 @@ router.delete('/vault/documents/:id', async (req, res, next) => {
 
     logger.info('Vault document deleted', { documentId: id, adminId: req.user.id });
 
-    res.json({ message: 'Documento de bóveda eliminado exitosamente' });
+    return res.json({ message: 'Documento de bóveda eliminado exitosamente' });
   } catch (error) {
     next(error);
   }
@@ -150,7 +150,7 @@ router.get('/users', async (req, res, next) => {
        ORDER BY created_at DESC`
     );
 
-    res.json({
+    return res.json({
       users: result.rows,
       total: result.rows.length
     });
@@ -202,7 +202,7 @@ router.put('/users/:id', async (req, res, next) => {
 
     logger.info('User updated', { userId: id, adminId: req.user.id });
 
-    res.json({
+    return res.json({
       message: 'Usuario actualizado exitosamente',
       user: result.rows[0]
     });
@@ -253,7 +253,7 @@ router.get('/stats', async (req, res, next) => {
        GROUP BY ai_model_used`
     );
 
-    res.json({
+    return res.json({
       users: {
         total: parseInt(usersResult.rows[0].total)
       },

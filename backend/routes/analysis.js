@@ -151,7 +151,7 @@ router.post('/projects/:projectId/analyze/pliego', async (req, res, next) => {
       tokens: aiResponse.tokensUsed 
     });
 
-    res.json({
+    return res.json({
       message: 'Análisis completado exitosamente',
       result: resultData,
       metadata: {
@@ -240,7 +240,7 @@ router.post('/projects/:projectId/analyze/contrato', async (req, res, next) => {
       tokens: aiResponse.tokensUsed 
     });
 
-    res.json({
+    return res.json({
       message: 'Análisis completado exitosamente',
       result: resultData,
       metadata: {
@@ -340,7 +340,7 @@ router.post('/projects/:projectId/generate/oferta', async (req, res, next) => {
       'Content-Disposition': `attachment; filename="oferta_${cliente.replace(/\s+/g, '_')}.docx"`
     });
 
-    res.send(docxBuffer);
+    return res.send(docxBuffer);
   } catch (error) {
     next(error);
   }
@@ -427,7 +427,7 @@ router.post('/projects/:projectId/generate/documentacion', async (req, res, next
       'Content-Disposition': `attachment; filename="${tipo_documento.replace(/\s+/g, '_')}.docx"`
     });
 
-    res.send(docxBuffer);
+    return res.send(docxBuffer);
   } catch (error) {
     next(error);
   }
@@ -462,7 +462,7 @@ router.get('/projects/:projectId/analysis', async (req, res, next) => {
 
     logger.info('Analysis history retrieved', { projectId, count: result.rows.length });
 
-    res.json({
+    return res.json({
       analysis: result.rows
     });
   } catch (error) {
@@ -503,7 +503,7 @@ router.delete('/projects/:projectId/analysis/:analysisId', async (req, res, next
 
     logger.info('Analysis deleted', { projectId, analysisId, userId: req.user.id });
 
-    res.json({ message: 'Análisis eliminado correctamente' });
+    return res.json({ message: 'Análisis eliminado correctamente' });
   } catch (error) {
     next(error);
   }
@@ -572,7 +572,7 @@ router.post('/projects/:projectId/analysis/:analysisId/add-as-document', async (
       analysisType: analysis.analysis_type 
     });
 
-    res.json({
+    return res.json({
       message: 'Análisis añadido como documento',
       document: {
         ...docResult.rows[0],

@@ -138,7 +138,7 @@ Responde de forma clara, técnica y precisa. Proporciona información útil y fu
       durationMs: aiResponse.duration
     });
 
-    res.json({
+    return res.json({
       response: aiResponse.result,
       chunks_used: chunks.length,
       sources,

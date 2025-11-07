@@ -63,7 +63,7 @@ app.use(requestLogger);
 // ============================================
 
 app.get('/health', (req, res) => {
-  res.json({ 
+  return res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
@@ -72,7 +72,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({
+  return res.json({
     message: '🚀 DILUS_AI Backend API',
     version: '2.0.0',
     documentation: '/api/docs',
@@ -103,7 +103,7 @@ app.use(errorHandler);
 // ============================================
 
 app.use((req, res) => {
-  res.status(404).json({ 
+  return res.status(404).json({ 
     error: 'Ruta no encontrada',
     path: req.path 
   });

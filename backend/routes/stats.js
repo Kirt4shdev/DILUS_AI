@@ -75,7 +75,7 @@ router.get('/overview', async (req, res, next) => {
 
     logger.info('Stats overview requested', { adminId: req.user.id, days });
 
-    res.json({
+    return res.json({
       period_days: parseInt(days),
       daily_usage: dailyUsage,
       analysis_vs_chat: analysisVsChat,
@@ -99,7 +99,7 @@ router.get('/daily/:days', async (req, res, next) => {
     const { days } = req.params;
     const dailyData = await getDailyTokenUsage({ days: parseInt(days) });
     
-    res.json({ data: dailyData });
+    return res.json({ data: dailyData });
   } catch (error) {
     next(error);
   }
@@ -119,7 +119,7 @@ router.get('/users', async (req, res, next) => {
       ORDER BY total_cost DESC
     `);
     
-    res.json({ users: userStats.rows });
+    return res.json({ users: userStats.rows });
   } catch (error) {
     next(error);
   }

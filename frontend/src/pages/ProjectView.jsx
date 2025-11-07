@@ -817,6 +817,31 @@ export default function ProjectView() {
           </button>
         </div>
       </Modal>
+
+      {/* Modal de confirmación para borrar documento */}
+      <Modal 
+        isOpen={!!deleteDocConfirmModal} 
+        onClose={() => setDeleteDocConfirmModal(null)}
+        title="Confirmar eliminación"
+      >
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          ¿Estás seguro de que deseas eliminar este documento? Esta acción no se puede deshacer.
+        </p>
+        <div className="flex space-x-3 justify-end">
+          <button
+            onClick={() => setDeleteDocConfirmModal(null)}
+            className="btn-secondary"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleDeleteDocument}
+            className="btn-danger"
+          >
+            Eliminar
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

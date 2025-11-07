@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectData, setNewProjectData] = useState({ name: '', description: '' });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
 
   const navigate = useNavigate();
   const toast = useToast();
@@ -71,17 +72,17 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteProject = async (id, name) => {
-    if (!confirm(`¿Eliminar proyecto "${name}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
+  const handleDeleteProject = async () => {
+    if (!deleteConfirmModal) return;
 
     try {
-      await apiClient.delete(`/projects/${id}`);
+      await apiClient.delete(`/projects/${deleteConfirmModal.id}`);
       toast.success('Proyecto eliminado exitosamente');
+      setDeleteConfirmModal(null);
       loadProjects();
     } catch (error) {
       toast.error('Error al eliminar proyecto');
+      setDeleteConfirmModal(null);
     }
   };
 
@@ -226,7 +227,7 @@ export default function Dashboard() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteProject(project.id, project.name);
+                      setDeleteConfirmModal({ id: project.id, name: project.name });
                     }}
                         className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                         title="Eliminar proyecto"
@@ -297,6 +298,31 @@ export default function Dashboard() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal de confirmación para borrar proyecto */}
+      <Modal 
+        isOpen={!!deleteConfirmModal} 
+        onClose={() => setDeleteConfirmModal(null)}
+        title="Confirmar eliminación"
+      >
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          ¿Estás seguro de que deseas eliminar el proyecto <strong className="text-gray-900 dark:text-gray-100">"{deleteConfirmModal?.name}"</strong>? Esta acción no se puede deshacer.
+        </p>
+        <div className="flex space-x-3 justify-end">
+          <button
+            onClick={() => setDeleteConfirmModal(null)}
+            className="btn-secondary"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleDeleteProject}
+            className="btn-danger"
+          >
+            Eliminar
+          </button>
+        </div>
       </Modal>
     </div>
   );

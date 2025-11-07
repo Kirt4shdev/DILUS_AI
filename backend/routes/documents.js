@@ -83,7 +83,7 @@ router.post('/projects/:projectId/documents', upload.single('file'), async (req,
       });
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Documento subido exitosamente. Procesando vectorización...',
       document
     });
@@ -116,7 +116,7 @@ router.get('/projects/:projectId/documents', async (req, res, next) => {
       [projectId]
     );
 
-    res.json({
+    return res.json({
       documents: result.rows,
       total: result.rows.length
     });
@@ -152,7 +152,7 @@ router.get('/:id', async (req, res, next) => {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
-    res.json({ document });
+    return res.json({ document });
   } catch (error) {
     next(error);
   }
@@ -194,7 +194,7 @@ router.get('/:id/download', async (req, res, next) => {
       'Content-Length': fileBuffer.length
     });
 
-    res.send(fileBuffer);
+    return res.send(fileBuffer);
   } catch (error) {
     next(error);
   }
@@ -235,7 +235,7 @@ router.delete('/:id', async (req, res, next) => {
 
     logger.info('Document deleted', { documentId: id, userId: req.user.id });
 
-    res.json({ message: 'Documento eliminado exitosamente' });
+    return res.json({ message: 'Documento eliminado exitosamente' });
   } catch (error) {
     next(error);
   }
