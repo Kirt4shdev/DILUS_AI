@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ProjectView from './pages/ProjectView';
 import AdminPanel from './pages/AdminPanel';
+import CodexSynapse from './pages/CodexSynapse';
 
 function ProtectedRoute({ children, requireAdmin = false }) {
   const { user, loading } = useAuth();
@@ -66,6 +67,14 @@ function App() {
               element={
                 <ProtectedRoute requireAdmin={true}>
                   <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/codex-synapse"
+              element={
+                <ProtectedRoute requireAdmin={true}>
+                  <CodexSynapse />
                 </ProtectedRoute>
               }
             />

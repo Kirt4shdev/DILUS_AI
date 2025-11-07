@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -26,7 +26,7 @@ export default function AdminPanel() {
     operation_type: '',
     operation_subtype: '',
     was_selected: '',
-    limit: 50,
+    limit: 25,
     offset: 0
   });
   const [totalChunks, setTotalChunks] = useState(0);
@@ -302,6 +302,34 @@ export default function AdminPanel() {
       <Header title="Panel de Administración" />
 
       <div className="container mx-auto px-6 py-8">
+
+        {/* Codex Synapse Access Card */}
+        <div className="mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg p-1">
+          <div className="bg-stone-100 dark:bg-gray-800 rounded-lg p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                  <Layers className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                    🌌 Codex Synapse
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Visualización 3D del Mapa de Conocimiento
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => window.location.href = '/codex-synapse'}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition shadow-lg hover:shadow-xl flex items-center space-x-2"
+              >
+                <span>Abrir Visualización 3D</span>
+                <Layers className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Tabs */}
         <div className="flex space-x-2 mb-6 border-b border-gray-200 dark:border-gray-700">
@@ -591,14 +619,15 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              {/* Tabla de Chunks */}
+              {/* Tabla de Chunks con scroll limitado */}
               {chunks.length === 0 ? (
                 <div className="bg-stone-200 dark:bg-gray-700 rounded-lg p-12 text-center">
                   <p className="text-gray-600 dark:text-gray-400">No hay chunks registrados con estos filtros</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-stone-100 dark:bg-gray-700">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider">
@@ -675,6 +704,7 @@ export default function AdminPanel() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
 

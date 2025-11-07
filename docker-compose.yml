@@ -79,6 +79,32 @@ services:
       timeout: 10s
       retries: 3
 
+  # VizService (Python Flask - Codex Synapse)
+  vizservice:
+    build: ./vizservice
+    container_name: dilus_vizservice
+    ports:
+      - "8091:8091"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=dilus_ai
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_2025
+    volumes:
+      - ./vizservice:/app
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - dilus_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Frontend (React + Vite)
   frontend:
     build: ./frontend

@@ -106,7 +106,8 @@ export async function ingestDocument(documentId, text, metadata = {}) {
     );
 
     // Dividir en chunks con parámetros dinámicos
-    const chunks = chunkText(text, params.chunkSize, params.chunkOverlap);
+    const chunkingMethod = await getConfigValue('chunking_method', 'fixed');
+    const chunks = chunkText(text, params.chunkSize, params.chunkOverlap, chunkingMethod);
     
     if (chunks.length === 0) {
       throw new Error('No se pudieron extraer chunks del documento');
