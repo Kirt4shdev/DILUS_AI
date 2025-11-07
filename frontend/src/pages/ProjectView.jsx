@@ -32,6 +32,7 @@ export default function ProjectView() {
   const [resultMetadata, setResultMetadata] = useState(null);
   const [currentAnalysisId, setCurrentAnalysisId] = useState(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
+  const [deleteDocConfirmModal, setDeleteDocConfirmModal] = useState(null);
 
   useEffect(() => {
     loadProject();
@@ -148,22 +149,24 @@ export default function ProjectView() {
     }));
   };
 
-  const handleDeleteDocument = async (docId) => {
-    if (!confirm('¿Estás seguro de eliminar este documento?')) return;
+  const handleDeleteDocument = async () => {
+    if (!deleteDocConfirmModal) return;
     
     try {
-      await apiClient.delete(`/projects/${id}/documents/${docId}`);
+      await apiClient.delete(`/documents/${deleteDocConfirmModal}`);
       toast.success('Documento eliminado');
+      setDeleteDocConfirmModal(null);
       loadDocuments();
       // Limpiar el documento de todas las selecciones
       setSelectedDocsByTab(prev => ({
-        pliego: prev.pliego.filter(id => id !== docId),
-        contrato: prev.contrato.filter(id => id !== docId),
-        oferta: prev.oferta.filter(id => id !== docId),
-        documentacion: prev.documentacion.filter(id => id !== docId)
+        pliego: prev.pliego.filter(id => id !== deleteDocConfirmModal),
+        contrato: prev.contrato.filter(id => id !== deleteDocConfirmModal),
+        oferta: prev.oferta.filter(id => id !== deleteDocConfirmModal),
+        documentacion: prev.documentacion.filter(id => id !== deleteDocConfirmModal)
       }));
     } catch (error) {
       toast.error('Error al eliminar documento');
+      setDeleteDocConfirmModal(null);
     }
   };
 
@@ -524,7 +527,7 @@ export default function ProjectView() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDeleteDocument(doc.id)}
+                      onClick={() => setDeleteDocConfirmModal(doc.id)}
                       className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
                       title="Eliminar documento"
                     >

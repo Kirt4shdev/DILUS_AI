@@ -34,7 +34,7 @@ router.post('/query', async (req, res, next) => {
     });
 
     // Buscar en la biblioteca (RAG)
-    const chunks = await searchInVault(queryText, { topK: 5 });
+    const chunks = await searchInVault(queryText, { topK: 10 });
     
     let aiResponse;
     let sources = [];

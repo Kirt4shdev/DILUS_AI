@@ -6,7 +6,8 @@ import { logger } from '../utils/logger.js';
 const CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE) || 1000;
 const CHUNK_OVERLAP = parseInt(process.env.RAG_CHUNK_OVERLAP) || 200;
 const TOP_K = parseInt(process.env.RAG_TOP_K) || 5;
-const SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD) || 0.7;
+// Nota: SIMILARITY_THRESHOLD eliminado del filtro WHERE para permitir recuperación de chunks
+// con similitudes más bajas. El hybrid_score ya ordena por relevancia y topK limita resultados.
 
 /**
  * Ingerir documento: chunking + embeddings + guardar
@@ -104,7 +105,6 @@ export async function searchSimilar(queryText, options = {}) {
     const {
       documentId = null,
       topK = TOP_K,
-      threshold = SIMILARITY_THRESHOLD,
       isVaultOnly = false
     } = options;
 
@@ -137,11 +137,10 @@ export async function searchSimilar(queryText, options = {}) {
         JOIN documents d ON e.document_id = d.id
         WHERE 
           d.is_vault_document = TRUE
-          AND (1 - (e.embedding <=> $1::vector)) > $3
         ORDER BY hybrid_score DESC
-        LIMIT $4
+        LIMIT $3
       `;
-      params = [JSON.stringify(queryEmbedding), queryText, threshold, topK];
+      params = [JSON.stringify(queryEmbedding), queryText, topK];
     } else if (documentId) {
       // Buscar en documento específico
       sql = `
@@ -160,11 +159,10 @@ export async function searchSimilar(queryText, options = {}) {
         FROM embeddings e
         WHERE 
           e.document_id = $3
-          AND (1 - (e.embedding <=> $1::vector)) > $4
         ORDER BY hybrid_score DESC
-        LIMIT $5
+        LIMIT $4
       `;
-      params = [JSON.stringify(queryEmbedding), queryText, documentId, threshold, topK];
+      params = [JSON.stringify(queryEmbedding), queryText, documentId, topK];
     } else {
       // Buscar en todos los documentos
       sql = `
@@ -183,11 +181,10 @@ export async function searchSimilar(queryText, options = {}) {
           d.filename
         FROM embeddings e
         JOIN documents d ON e.document_id = d.id
-        WHERE (1 - (e.embedding <=> $1::vector)) > $3
         ORDER BY hybrid_score DESC
-        LIMIT $4
+        LIMIT $3
       `;
-      params = [JSON.stringify(queryEmbedding), queryText, threshold, topK];
+      params = [JSON.stringify(queryEmbedding), queryText, topK];
     }
 
     const result = await query(sql, params);

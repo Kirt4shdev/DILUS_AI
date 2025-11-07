@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
+import Modal from '../components/Modal';
 import TokenStatsView from '../components/TokenStatsView';
 import apiClient from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
 export default function AdminPanel() {
   const toast = useToast();
+  const pollingInterval = useRef(null);
   
   const [activeTab, setActiveTab] = useState('codex');
   const [codexDocs, setCodexDocs] = useState([]);
@@ -15,6 +17,7 @@ export default function AdminPanel() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
 
   useEffect(() => {
     if (activeTab === 'codex') loadCodexDocs();
@@ -22,15 +25,43 @@ export default function AdminPanel() {
     if (activeTab === 'stats') loadStats();
   }, [activeTab]);
 
-  const loadCodexDocs = async () => {
+  // Auto-refrescar cuando hay documentos procesándose
+  useEffect(() => {
+    const hasProcessingDocs = codexDocs.some(
+      doc => doc.vectorization_status === 'pending' || doc.vectorization_status === 'processing'
+    );
+
+    if (hasProcessingDocs && activeTab === 'codex') {
+      // Iniciar polling cada 3 segundos (sin mostrar loading spinner)
+      pollingInterval.current = setInterval(() => {
+        loadCodexDocs(false);
+      }, 3000);
+    } else {
+      // Limpiar intervalo si no hay docs procesándose
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+    }
+
+    // Cleanup al desmontar o cambiar de tab
+    return () => {
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+    };
+  }, [codexDocs, activeTab]);
+
+  const loadCodexDocs = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const response = await apiClient.get('/admin/vault/documents');
       setCodexDocs(response.data.documents);
     } catch (error) {
-      toast.error('Error al cargar documentos del Codex Dilus');
+      if (showLoading) toast.error('Error al cargar documentos del Codex Dilus');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -79,15 +110,17 @@ export default function AdminPanel() {
     }
   };
 
-  const handleDeleteVaultDoc = async (id, filename) => {
-    if (!confirm(`¿Eliminar documento "${filename}" del Codex Dilus?`)) return;
+  const handleDeleteVaultDoc = async () => {
+    if (!deleteConfirmModal) return;
 
     try {
-      await apiClient.delete(`/admin/vault/documents/${id}`);
+      await apiClient.delete(`/admin/vault/documents/${deleteConfirmModal.id}`);
       toast.success('Documento eliminado del Codex Dilus');
+      setDeleteConfirmModal(null);
       loadCodexDocs();
     } catch (error) {
       toast.error('Error al eliminar documento');
+      setDeleteConfirmModal(null);
     }
   };
 
@@ -198,13 +231,15 @@ export default function AdminPanel() {
                               Procesado
                             </span>
                           )}
-                          {doc.vectorization_status === 'processing' && (
+                          {(doc.vectorization_status === 'processing' || doc.vectorization_status === 'pending') && (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                              Procesando...
+                              <Loader className="w-3 h-3 mr-1 animate-spin" />
+                              {doc.vectorization_status === 'pending' ? 'En cola...' : 'Procesando...'}
                             </span>
                           )}
                           {doc.vectorization_status === 'failed' && (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                              <X className="w-3 h-3 mr-1" />
                               Error
                             </span>
                           )}
@@ -214,8 +249,9 @@ export default function AdminPanel() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
-                            onClick={() => handleDeleteVaultDoc(doc.id, doc.filename)}
+                            onClick={() => setDeleteConfirmModal({ id: doc.id, filename: doc.filename })}
                             className="text-red-600 hover:text-red-700 dark:text-red-400"
+                            title="Eliminar documento"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -391,6 +427,31 @@ export default function AdminPanel() {
           )}
         </div>
       </div>
+
+      {/* Modal de confirmación para borrar documento del Codex */}
+      <Modal 
+        isOpen={!!deleteConfirmModal} 
+        onClose={() => setDeleteConfirmModal(null)}
+        title="Confirmar eliminación"
+      >
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          ¿Estás seguro de que deseas eliminar el documento <strong className="text-gray-900 dark:text-gray-100">"{deleteConfirmModal?.filename}"</strong> del Codex Dilus? Esta acción no se puede deshacer.
+        </p>
+        <div className="flex space-x-3 justify-end">
+          <button
+            onClick={() => setDeleteConfirmModal(null)}
+            className="btn-secondary"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleDeleteVaultDoc}
+            className="btn-danger"
+          >
+            Eliminar
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
