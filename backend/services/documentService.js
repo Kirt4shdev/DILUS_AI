@@ -320,9 +320,16 @@ function chunkByParagraph(text, maxSize, overlap) {
       paragraphs.push(currentParagraph.trim());
     }
     
-    logger.debug('Paragraphs split', { 
+    const totalChars = paragraphs.reduce((sum, p) => sum + p.length, 0);
+    const avgLength = paragraphs.length > 0 ? Math.round(totalChars / paragraphs.length) : 0;
+    
+    logger.info('Paragraphs split', { 
       count: paragraphs.length,
-      avgLength: Math.round(paragraphs.reduce((sum, p) => sum + p.length, 0) / paragraphs.length)
+      totalChars,
+      avgLength,
+      minLength: paragraphs.length > 0 ? Math.min(...paragraphs.map(p => p.length)) : 0,
+      maxLength: paragraphs.length > 0 ? Math.max(...paragraphs.map(p => p.length)) : 0,
+      targetChunkSize: maxSize
     });
     
     // Agrupar párrafos en chunks
@@ -335,13 +342,17 @@ function chunkByParagraph(text, maxSize, overlap) {
       
       // Si un solo párrafo excede maxSize, dividirlo por tamaño fijo
       if (paragraph.length > maxSize) {
+        logger.debug(`Paragraph ${i} exceeds maxSize (${paragraph.length} > ${maxSize}), splitting...`);
+        
         // Guardar chunk actual si existe
         if (currentChunk.length > 0) {
+          const chunkText = currentChunk.join('\n\n');
           chunks.push({
-            text: currentChunk.join('\n\n'),
+            text: chunkText,
             startIndex: 0,
             endIndex: 0
           });
+          logger.debug(`Saved chunk before large paragraph: ${chunkText.length} chars, ${currentChunk.length} paragraphs`);
           currentChunk = [];
           currentLength = 0;
         }
@@ -349,19 +360,24 @@ function chunkByParagraph(text, maxSize, overlap) {
         // Dividir párrafo largo
         const subChunks = chunkByFixedSize(paragraph, maxSize, overlap);
         chunks.push(...subChunks);
+        logger.debug(`Large paragraph split into ${subChunks.length} subchunks`);
         continue;
       }
       
-      // Calcular tamaño con separadores
-      const paragraphWithSeparator = paragraph.length + (currentChunk.length > 0 ? 2 : 0); // +2 for \n\n
+      // Calcular si agregar este párrafo excedería el tamaño máximo
+      const separator = currentChunk.length > 0 ? '\n\n' : '';
+      const newLength = currentLength + separator.length + paragraph.length;
       
       // Si agregar este párrafo excede el tamaño, cerrar chunk actual
-      if (currentLength + paragraphWithSeparator > maxSize && currentChunk.length > 0) {
+      if (newLength > maxSize && currentChunk.length > 0) {
+        const chunkText = currentChunk.join('\n\n');
         chunks.push({
-          text: currentChunk.join('\n\n'),
+          text: chunkText,
           startIndex: 0,
           endIndex: 0
         });
+        
+        logger.debug(`Chunk ${chunks.length} closed: ${chunkText.length} chars, ${currentChunk.length} paragraphs (would exceed: ${newLength} > ${maxSize})`);
         
         // Aplicar overlap: incluir último(s) párrafo(s) del chunk anterior
         currentChunk = [];
@@ -370,40 +386,51 @@ function chunkByParagraph(text, maxSize, overlap) {
         if (overlap > 0 && chunks.length > 0) {
           // Tomar párrafos del final del chunk anterior para overlap
           const prevChunkParagraphs = chunks[chunks.length - 1].text.split('\n\n');
-          let overlapText = '';
+          let overlapParagraphs = [];
+          let overlapLength = 0;
           
-          for (let j = prevChunkParagraphs.length - 1; j >= 0 && overlapText.length < overlap; j--) {
-            overlapText = prevChunkParagraphs[j] + (overlapText ? '\n\n' + overlapText : '');
+          for (let j = prevChunkParagraphs.length - 1; j >= 0 && overlapLength < overlap; j--) {
+            const p = prevChunkParagraphs[j];
+            overlapParagraphs.unshift(p);
+            overlapLength += p.length + (overlapParagraphs.length > 1 ? 2 : 0);
           }
           
-          if (overlapText.length > 0) {
-            currentChunk.push(overlapText);
-            currentLength = overlapText.length + 2; // +2 for separator with next paragraph
+          if (overlapParagraphs.length > 0) {
+            currentChunk = overlapParagraphs;
+            currentLength = currentChunk.join('\n\n').length;
+            logger.debug(`Applied overlap: ${overlapParagraphs.length} paragraphs, ${currentLength} chars`);
           }
         }
         
+        // Agregar el párrafo que no cabía al nuevo chunk
         currentChunk.push(paragraph);
-        currentLength += paragraph.length;
+        currentLength = currentChunk.join('\n\n').length;
       } else {
         // Agregar párrafo al chunk actual
         currentChunk.push(paragraph);
-        currentLength += paragraphWithSeparator;
+        currentLength = newLength;
       }
     }
     
     // Agregar último chunk
     if (currentChunk.length > 0) {
+      const chunkText = currentChunk.join('\n\n');
       chunks.push({
-        text: currentChunk.join('\n\n'),
+        text: chunkText,
         startIndex: 0,
         endIndex: 0
       });
+      logger.debug(`Final chunk: ${chunkText.length} chars, ${currentChunk.length} paragraphs`);
     }
     
+    const chunkSizes = chunks.map(c => c.text.length);
     logger.info('Paragraph chunking completed', {
       paragraphsFound: paragraphs.length,
       chunksCreated: chunks.length,
-      avgChunkSize: Math.round(chunks.reduce((sum, c) => sum + c.text.length, 0) / chunks.length)
+      avgChunkSize: Math.round(chunks.reduce((sum, c) => sum + c.text.length, 0) / chunks.length),
+      minChunkSize: Math.min(...chunkSizes),
+      maxChunkSize: Math.max(...chunkSizes),
+      targetSize: maxSize
     });
     
     return chunks;

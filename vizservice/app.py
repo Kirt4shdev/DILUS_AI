@@ -100,7 +100,7 @@ def fetch_embeddings_from_db(filters=None):
             results.append({
                 'id': row[0],
                 'document_id': row[1],
-                'chunk_text': row[2][:200],  # Preview
+                'chunk_text': row[2],  # Texto completo del chunk
                 'chunk_index': row[3],
                 'embedding': embedding,
                 'metadata': row[5] or {},

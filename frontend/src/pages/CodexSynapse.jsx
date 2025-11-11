@@ -394,9 +394,20 @@ export default function CodexSynapse() {
                   </div>
                   
                   <div>
-                    <div className="text-xs text-gray-400 mb-1">Chunk #{selectedChunk.chunk_index}</div>
-                    <div className="text-xs text-gray-300 bg-gray-900/50 p-3 rounded border border-gray-700 max-h-48 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs text-gray-400">Chunk #{selectedChunk.chunk_index}</div>
+                      <div className="text-xs text-blue-400 font-semibold">
+                        {selectedChunk.chunk_text.length} caracteres
+                      </div>
+                    </div>
+                    <div 
+                      className="text-xs text-gray-300 bg-gray-900/50 p-3 rounded border border-gray-700 overflow-y-auto whitespace-pre-wrap"
+                      style={{ maxHeight: '400px' }}
+                    >
                       {selectedChunk.chunk_text}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1 italic">
+                      ↑ Scroll para ver todo el contenido
                     </div>
                   </div>
                   

@@ -239,21 +239,42 @@ export default function AdminPanel() {
   };
 
   const handleUploadVaultDoc = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
     try {
       setUploading(true);
-      await apiClient.post('/admin/vault/documents', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      
+      // Subir todos los archivos en paralelo
+      const uploadPromises = files.map(file => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post('/admin/vault/documents', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       });
-      toast.success('Documento añadido al Codex Dilus exitosamente');
+
+      const results = await Promise.allSettled(uploadPromises);
+      
+      // Contar éxitos y fallos
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      if (successful > 0) {
+        toast.success(`${successful} documento(s) añadido(s) al Codex Dilus exitosamente`);
+      }
+      
+      if (failed > 0) {
+        const firstError = results.find(r => r.status === 'rejected')?.reason;
+        toast.error(`${failed} documento(s) fallaron: ${firstError?.response?.data?.error || 'Error al subir'}`);
+      }
+
       loadCodexDocs();
+      
+      // Limpiar el input para permitir subir los mismos archivos de nuevo
+      e.target.value = '';
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al subir documento');
+      toast.error('Error al subir documentos');
     } finally {
       setUploading(false);
     }
@@ -370,13 +391,14 @@ export default function AdminPanel() {
                 </div>
                 <label className="btn-primary flex items-center space-x-2 cursor-pointer">
                   <Upload className="w-5 h-5" />
-                  <span>{uploading ? 'Subiendo...' : 'Subir Documento'}</span>
+                  <span>{uploading ? 'Subiendo...' : 'Subir Documentos'}</span>
                   <input
                     type="file"
                     onChange={handleUploadVaultDoc}
                     accept=".pdf,.docx,.txt"
                     className="hidden"
                     disabled={uploading}
+                    multiple
                   />
                 </label>
               </div>
@@ -1176,13 +1198,14 @@ export default function AdminPanel() {
                         onChange={(e) => handleConfigChange('chunking_method', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       >
-                        <option value="fixed">Fixed Size</option>
+                        <option value="fixed">Fixed Size (Recomendado)</option>
                         <option value="sentence">Por Sentencias</option>
                         <option value="paragraph">Por Párrafos</option>
                       </select>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Actualmente solo "fixed" está implementado
-                      </p>
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                        <p className="font-medium">• Fixed: Chunks exactos de {getConfigValue('chunk_size')} caracteres</p>
+                        <p>• Sentence/Paragraph: Respeta límites (chunks pueden ser más pequeños)</p>
+                      </div>
                     </div>
                   </div>
                 </div>
