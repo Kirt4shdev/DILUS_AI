@@ -65,25 +65,53 @@ export async function getClient() {
 }
 
 /**
- * Inicializar conexión a la base de datos
+ * Función auxiliar para esperar un tiempo determinado
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Inicializar conexión a la base de datos con reintentos automáticos
  */
 export async function initDatabase() {
-  try {
-    await pool.query('SELECT NOW()');
-    logger.info('✅ PostgreSQL connected successfully');
-    
-    // Verificar extensión pgvector
-    const vectorCheck = await pool.query(
-      "SELECT * FROM pg_extension WHERE extname = 'vector'"
-    );
-    if (vectorCheck.rows.length > 0) {
-      logger.info('✅ pgvector extension is installed');
-    } else {
-      logger.warn('⚠️  pgvector extension not found');
+  const maxRetries = 10;
+  const retryDelay = 2000; // 2 segundos entre reintentos
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.info(`🔄 Attempting to connect to PostgreSQL (attempt ${attempt}/${maxRetries})...`);
+      
+      await pool.query('SELECT NOW()');
+      logger.info('✅ PostgreSQL connected successfully');
+      
+      // Verificar extensión pgvector
+      const vectorCheck = await pool.query(
+        "SELECT * FROM pg_extension WHERE extname = 'vector'"
+      );
+      if (vectorCheck.rows.length > 0) {
+        logger.info('✅ pgvector extension is installed');
+      } else {
+        logger.warn('⚠️  pgvector extension not found');
+      }
+      
+      // Conexión exitosa, salir del loop
+      return;
+      
+    } catch (error) {
+      const errorMessage = error.message || 'Unknown error';
+      
+      if (attempt === maxRetries) {
+        // Último intento fallido
+        logger.error(`❌ Failed to connect to PostgreSQL after ${maxRetries} attempts`, error);
+        throw error;
+      }
+      
+      // Continuar con reintentos
+      logger.warn(`⚠️  PostgreSQL connection failed (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+      logger.info(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
+      await sleep(retryDelay);
     }
-  } catch (error) {
-    logger.error('Failed to connect to PostgreSQL', error);
-    throw error;
   }
 }
 

@@ -9,6 +9,7 @@ import { fillPrompt, PROMPT_ANALIZAR_PLIEGO, PROMPT_ANALIZAR_CONTRATO, PROMPT_GE
 import { generateOferta, generateDocumentacion } from '../services/docgenService.js';
 import { logger } from '../utils/logger.js';
 import { logTokenUsage } from '../services/tokenStatsService.js';
+import { executeParallelAnalysis, executeParallelAnalysisSimple } from '../services/parallelAnalysisService.js';
 
 const router = express.Router();
 
@@ -609,6 +610,481 @@ router.post('/projects/:projectId/analysis/:analysisId/add-as-document', async (
         analysis_type: analysis.analysis_type
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/analyze/pliego-parallel
+ * Analizar pliego técnico con prompts paralelos
+ */
+router.post('/projects/:projectId/analyze/pliego-parallel', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { document_ids, use_standard } = req.body;
+
+    if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
+      return res.status(400).json({ error: 'Se requiere al menos un documento' });
+    }
+
+    // Verificar proyecto
+    const projectCheck = await query(
+      'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    // Preparar contextos de documentos para análisis paralelo
+    const documentContexts = [];
+    
+    for (const docId of document_ids) {
+      const docCheck = await query(
+        `SELECT d.*, p.user_id 
+         FROM documents d
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.id = $1`,
+        [docId]
+      );
+
+      if (docCheck.rows.length === 0) {
+        return res.status(400).json({ error: `Documento ${docId} no encontrado` });
+      }
+
+      const doc = docCheck.rows[0];
+      
+      if (doc.user_id !== req.user.id && !doc.is_vault_document) {
+        return res.status(403).json({ error: `Sin permisos para acceder al documento ${docId}` });
+      }
+
+      // Obtener archivo y extraer texto
+      const buffer = await getFile(doc.file_path);
+      const fullText = await extractText(buffer, doc.mime_type);
+
+      documentContexts.push({
+        documentId: docId,
+        fullText: fullText,
+        filename: doc.filename
+      });
+    }
+
+    // Ejecutar análisis paralelo
+    const analysisResult = await executeParallelAnalysis(
+      documentContexts,
+      'pliego_tecnico',
+      use_standard,
+      {
+        userId: req.user.id,
+        projectId: projectId
+      }
+    );
+
+    // Guardar resultado
+    const saveResult = await query(
+      `INSERT INTO analysis_results (project_id, user_id, analysis_type, input_document_ids, result_data, ai_model_used, tokens_used, duration_ms)
+       VALUES ($1, $2, 'pliego_tecnico_parallel', $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        projectId, 
+        req.user.id, 
+        document_ids, 
+        JSON.stringify(analysisResult), 
+        analysisResult.metadata_global.modelo_utilizado, 
+        analysisResult.metadata_global.tokens_totales, 
+        analysisResult.metadata_global.duracion_total_ms
+      ]
+    );
+
+    // Registrar uso de tokens
+    await logTokenUsage({
+      userId: req.user.id,
+      operationType: 'analysis',
+      operationSubtype: 'pliego_tecnico_parallel',
+      aiModel: analysisResult.metadata_global.modelo_utilizado,
+      tokensUsed: analysisResult.metadata_global.tokens_totales,
+      tokensInput: analysisResult.metadata_global.tokens_input_totales,
+      tokensOutput: analysisResult.metadata_global.tokens_output_totales,
+      projectId: projectId,
+      analysisId: saveResult.rows[0].id,
+      queryObject: `Análisis paralelo de pliego técnico - ${analysisResult.prompts_ejecutados} prompts`,
+      durationMs: analysisResult.metadata_global.duracion_total_ms
+    });
+
+    logger.info('Parallel pliego analysis completed', { 
+      projectId, 
+      model: analysisResult.metadata_global.modelo_utilizado,
+      tokens: analysisResult.metadata_global.tokens_totales,
+      prompts: analysisResult.prompts_ejecutados
+    });
+
+    return res.json({
+      message: 'Análisis paralelo completado exitosamente',
+      result: analysisResult,
+      metadata: {
+        model: analysisResult.metadata_global.modelo_utilizado,
+        tokens_used: analysisResult.metadata_global.tokens_totales,
+        duration: analysisResult.metadata_global.duracion_total_ms,
+        analysis_id: saveResult.rows[0].id,
+        prompts_executed: analysisResult.prompts_ejecutados
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/analyze/contrato-parallel
+ * Analizar contrato con prompts paralelos
+ */
+router.post('/projects/:projectId/analyze/contrato-parallel', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { document_ids, use_standard } = req.body;
+
+    if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
+      return res.status(400).json({ error: 'Se requiere al menos un documento' });
+    }
+
+    const projectCheck = await query(
+      'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    const documentContexts = [];
+    
+    for (const docId of document_ids) {
+      const docCheck = await query(
+        `SELECT d.*, p.user_id 
+         FROM documents d
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.id = $1`,
+        [docId]
+      );
+
+      if (docCheck.rows.length === 0) {
+        return res.status(400).json({ error: `Documento ${docId} no encontrado` });
+      }
+
+      const doc = docCheck.rows[0];
+      
+      if (doc.user_id !== req.user.id && !doc.is_vault_document) {
+        return res.status(403).json({ error: `Sin permisos para acceder al documento ${docId}` });
+      }
+
+      const buffer = await getFile(doc.file_path);
+      const fullText = await extractText(buffer, doc.mime_type);
+
+      documentContexts.push({
+        documentId: docId,
+        fullText: fullText,
+        filename: doc.filename
+      });
+    }
+
+    const analysisResult = await executeParallelAnalysis(
+      documentContexts,
+      'contrato',
+      use_standard,
+      {
+        userId: req.user.id,
+        projectId: projectId
+      }
+    );
+
+    const saveResult = await query(
+      `INSERT INTO analysis_results (project_id, user_id, analysis_type, input_document_ids, result_data, ai_model_used, tokens_used, duration_ms)
+       VALUES ($1, $2, 'contrato_parallel', $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        projectId, 
+        req.user.id, 
+        document_ids, 
+        JSON.stringify(analysisResult), 
+        analysisResult.metadata_global.modelo_utilizado, 
+        analysisResult.metadata_global.tokens_totales, 
+        analysisResult.metadata_global.duracion_total_ms
+      ]
+    );
+
+    await logTokenUsage({
+      userId: req.user.id,
+      operationType: 'analysis',
+      operationSubtype: 'contrato_parallel',
+      aiModel: analysisResult.metadata_global.modelo_utilizado,
+      tokensUsed: analysisResult.metadata_global.tokens_totales,
+      tokensInput: analysisResult.metadata_global.tokens_input_totales,
+      tokensOutput: analysisResult.metadata_global.tokens_output_totales,
+      projectId: projectId,
+      analysisId: saveResult.rows[0].id,
+      queryObject: `Análisis paralelo de contrato - ${analysisResult.prompts_ejecutados} prompts`,
+      durationMs: analysisResult.metadata_global.duracion_total_ms
+    });
+
+    logger.info('Parallel contract analysis completed', { 
+      projectId, 
+      model: analysisResult.metadata_global.modelo_utilizado,
+      tokens: analysisResult.metadata_global.tokens_totales,
+      prompts: analysisResult.prompts_ejecutados
+    });
+
+    return res.json({
+      message: 'Análisis paralelo completado exitosamente',
+      result: analysisResult,
+      metadata: {
+        model: analysisResult.metadata_global.modelo_utilizado,
+        tokens_used: analysisResult.metadata_global.tokens_totales,
+        duration: analysisResult.metadata_global.duracion_total_ms,
+        analysis_id: saveResult.rows[0].id,
+        prompts_executed: analysisResult.prompts_ejecutados
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/generate/oferta-parallel
+ * Generar oferta con prompts paralelos
+ */
+router.post('/projects/:projectId/generate/oferta-parallel', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { document_ids, cliente, observaciones, use_standard } = req.body;
+
+    if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
+      return res.status(400).json({ error: 'Se requiere al menos un documento' });
+    }
+
+    if (!cliente) {
+      return res.status(400).json({ error: 'Se requiere nombre del cliente' });
+    }
+
+    const projectCheck = await query(
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    const project = projectCheck.rows[0];
+    const documentContexts = [];
+    
+    for (const docId of document_ids) {
+      const docCheck = await query(
+        `SELECT d.*, p.user_id 
+         FROM documents d
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.id = $1`,
+        [docId]
+      );
+
+      if (docCheck.rows.length === 0) {
+        return res.status(400).json({ error: `Documento ${docId} no encontrado` });
+      }
+
+      const doc = docCheck.rows[0];
+      
+      if (doc.user_id !== req.user.id && !doc.is_vault_document) {
+        return res.status(403).json({ error: `Sin permisos para acceder al documento ${docId}` });
+      }
+
+      const buffer = await getFile(doc.file_path);
+      const fullText = await extractText(buffer, doc.mime_type);
+
+      documentContexts.push({
+        documentId: docId,
+        fullText: fullText,
+        filename: doc.filename
+      });
+    }
+
+    const analysisResult = await executeParallelAnalysis(
+      documentContexts,
+      'oferta',
+      use_standard || false,
+      {
+        userId: req.user.id,
+        projectId: projectId
+      }
+    );
+
+    // Generar documento DOCX con resultado consolidado
+    const resultadoConsolidado = analysisResult.resultado_final_consolidado;
+    const docxBuffer = await generateOferta({
+      cliente,
+      proyecto: project.name,
+      propuesta_tecnica: resultadoConsolidado.propuesta_tecnica || '',
+      alcance: resultadoConsolidado.alcance || '',
+      plazos: resultadoConsolidado.plazos || '',
+      conceptos_precio: resultadoConsolidado.conceptos_precio || []
+    });
+
+    const saveResult = await query(
+      `INSERT INTO analysis_results (project_id, user_id, analysis_type, input_document_ids, result_data, ai_model_used, tokens_used, duration_ms)
+       VALUES ($1, $2, 'oferta_parallel', $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        projectId, 
+        req.user.id, 
+        document_ids, 
+        JSON.stringify(analysisResult), 
+        analysisResult.metadata_global.modelo_utilizado, 
+        analysisResult.metadata_global.tokens_totales, 
+        analysisResult.metadata_global.duracion_total_ms
+      ]
+    );
+
+    await logTokenUsage({
+      userId: req.user.id,
+      operationType: 'generation',
+      operationSubtype: 'oferta_parallel',
+      aiModel: analysisResult.metadata_global.modelo_utilizado,
+      tokensUsed: analysisResult.metadata_global.tokens_totales,
+      tokensInput: analysisResult.metadata_global.tokens_input_totales,
+      tokensOutput: analysisResult.metadata_global.tokens_output_totales,
+      projectId: projectId,
+      analysisId: saveResult.rows[0].id,
+      queryObject: `Generación paralela de oferta para ${cliente} - ${analysisResult.prompts_ejecutados} prompts`,
+      durationMs: analysisResult.metadata_global.duracion_total_ms
+    });
+
+    logger.info('Parallel oferta generated', { projectId, cliente });
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="oferta_${cliente.replace(/\s+/g, '_')}.docx"`
+    });
+
+    return res.send(docxBuffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/generate/documentacion-parallel
+ * Generar documentación con prompts paralelos
+ */
+router.post('/projects/:projectId/generate/documentacion-parallel', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { document_ids, tipo_documento, titulo, use_standard } = req.body;
+
+    if (!document_ids || !Array.isArray(document_ids) || document_ids.length === 0) {
+      return res.status(400).json({ error: 'Se requiere al menos un documento' });
+    }
+
+    if (!tipo_documento || !titulo) {
+      return res.status(400).json({ error: 'Se requiere tipo de documento y título' });
+    }
+
+    const projectCheck = await query(
+      'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    const documentContexts = [];
+    
+    for (const docId of document_ids) {
+      const docCheck = await query(
+        `SELECT d.*, p.user_id 
+         FROM documents d
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.id = $1`,
+        [docId]
+      );
+
+      if (docCheck.rows.length === 0) {
+        return res.status(400).json({ error: `Documento ${docId} no encontrado` });
+      }
+
+      const doc = docCheck.rows[0];
+      
+      if (doc.user_id !== req.user.id && !doc.is_vault_document) {
+        return res.status(403).json({ error: `Sin permisos para acceder al documento ${docId}` });
+      }
+
+      const buffer = await getFile(doc.file_path);
+      const fullText = await extractText(buffer, doc.mime_type);
+
+      documentContexts.push({
+        documentId: docId,
+        fullText: fullText,
+        filename: doc.filename
+      });
+    }
+
+    const analysisResult = await executeParallelAnalysis(
+      documentContexts,
+      'documentacion',
+      use_standard || false,
+      {
+        userId: req.user.id,
+        projectId: projectId
+      }
+    );
+
+    // Generar documento DOCX
+    const resultadoConsolidado = analysisResult.resultado_final_consolidado;
+    const docxBuffer = await generateDocumentacion({
+      titulo,
+      tipo_documento,
+      contenido: resultadoConsolidado.introduccion || '',
+      secciones: resultadoConsolidado.secciones || []
+    });
+
+    const saveResult = await query(
+      `INSERT INTO analysis_results (project_id, user_id, analysis_type, input_document_ids, result_data, ai_model_used, tokens_used, duration_ms)
+       VALUES ($1, $2, 'documentacion_parallel', $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        projectId, 
+        req.user.id, 
+        document_ids, 
+        JSON.stringify(analysisResult), 
+        analysisResult.metadata_global.modelo_utilizado, 
+        analysisResult.metadata_global.tokens_totales, 
+        analysisResult.metadata_global.duracion_total_ms
+      ]
+    );
+
+    await logTokenUsage({
+      userId: req.user.id,
+      operationType: 'generation',
+      operationSubtype: 'documentacion_parallel',
+      aiModel: analysisResult.metadata_global.modelo_utilizado,
+      tokensUsed: analysisResult.metadata_global.tokens_totales,
+      tokensInput: analysisResult.metadata_global.tokens_input_totales,
+      tokensOutput: analysisResult.metadata_global.tokens_output_totales,
+      projectId: projectId,
+      analysisId: saveResult.rows[0].id,
+      queryObject: `Generación paralela de ${tipo_documento} - ${analysisResult.prompts_ejecutados} prompts`,
+      durationMs: analysisResult.metadata_global.duracion_total_ms
+    });
+
+    logger.info('Parallel documentation generated', { projectId, tipo_documento });
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${tipo_documento.replace(/\s+/g, '_')}.docx"`
+    });
+
+    return res.send(docxBuffer);
   } catch (error) {
     next(error);
   }

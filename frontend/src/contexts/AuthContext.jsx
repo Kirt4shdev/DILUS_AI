@@ -6,7 +6,10 @@ const AuthContext = createContext();
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // En desarrollo, durante HMR, el contexto puede perderse temporalmente
+    // En lugar de lanzar un error, retornamos null para que el componente pueda manejarlo
+    console.warn('useAuth called outside of AuthProvider');
+    return null;
   }
   return context;
 }

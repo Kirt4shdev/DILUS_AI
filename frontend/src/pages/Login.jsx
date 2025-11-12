@@ -15,10 +15,21 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
 
-  const { login, register } = useAuth();
+  const auth = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const toast = useToast();
+  
+  // Manejar caso de HMR donde el contexto no está disponible
+  if (!auth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  const { login, register } = auth;
 
   const handleChange = (e) => {
     setFormData({

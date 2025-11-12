@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Upload, FileText, Check, Loader, XCircle, Trash2, X, FileSearch, Scale, Briefcase, FolderOpen } from 'lucide-react';
+import { Upload, FileText, Check, Loader, XCircle, Trash2, X, FileSearch, Scale, Briefcase, FolderOpen, Zap } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
+import ParallelAnalysisResult from '../components/ParallelAnalysisResult';
 import apiClient from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
@@ -33,6 +34,7 @@ export default function ProjectView() {
   const [currentAnalysisId, setCurrentAnalysisId] = useState(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
   const [deleteDocConfirmModal, setDeleteDocConfirmModal] = useState(null);
+  const [isParallelAnalysis, setIsParallelAnalysis] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -52,10 +54,14 @@ export default function ProjectView() {
         duration: latestAnalysis.duration_ms,
         created_at: latestAnalysis.created_at
       });
+      // Detectar si es análisis paralelo
+      const isParallel = latestAnalysis.analysis_type?.includes('parallel');
+      setIsParallelAnalysis(isParallel);
     } else {
       setResult(null);
       setCurrentAnalysisId(null);
       setResultMetadata(null);
+      setIsParallelAnalysis(false);
     }
   }, [activeTab, analysisHistory]);
 
@@ -88,7 +94,11 @@ export default function ProjectView() {
       
       // Mapeo de tipos de análisis de BD a tabs del frontend
       const typeMapping = {
-        'pliego_tecnico': 'pliego'
+        'pliego_tecnico': 'pliego',
+        'pliego_tecnico_parallel': 'pliego',
+        'contrato_parallel': 'contrato',
+        'oferta_parallel': 'oferta',
+        'documentacion_parallel': 'documentacion'
         // contrato, oferta y documentacion tienen el mismo nombre en BD y frontend
       };
       
@@ -113,6 +123,9 @@ export default function ProjectView() {
           duration: latestAnalysis.duration_ms,
           created_at: latestAnalysis.created_at
         });
+        // Detectar si es análisis paralelo
+        const isParallel = latestAnalysis.analysis_type?.includes('parallel');
+        setIsParallelAnalysis(isParallel);
       }
     } catch (error) {
       console.error('Error al cargar historial:', error);
@@ -170,7 +183,7 @@ export default function ProjectView() {
     }
   };
 
-  const handleAnalyze = async (analysisType, useStandard = false) => {
+  const handleAnalyze = async (analysisType, useStandard = false, useParallel = false) => {
     const selectedDocs = selectedDocsByTab[analysisType] || [];
     if (selectedDocs.length === 0) {
       toast.error('Selecciona al menos un documento');
@@ -180,6 +193,7 @@ export default function ProjectView() {
     setAnalyzing(true);
     setAnalyzingWithStandard(useStandard);
     setResult(null);
+    setIsParallelAnalysis(useParallel);
 
     try {
       // Paso 1: Preparando documentos
@@ -192,9 +206,13 @@ export default function ProjectView() {
       
       // Paso 3: Consultando IA
       const modelName = useStandard ? 'Deep Análisis IA' : 'Análisis IA';
-      setProgressMessage(`Consultando ${modelName}...`);
+      const methodName = useParallel ? 'Análisis Paralelo' : 'Análisis Estándar';
+      setProgressMessage(`Ejecutando ${methodName} con ${modelName}...`);
       
-      const endpoint = `/projects/${id}/analyze/${analysisType}`;
+      const endpoint = useParallel 
+        ? `/projects/${id}/analyze/${analysisType}-parallel`
+        : `/projects/${id}/analyze/${analysisType}`;
+      
       const response = await apiClient.post(endpoint, {
         document_ids: selectedDocs,
         use_standard: useStandard
@@ -597,9 +615,9 @@ export default function ProjectView() {
                       </div>
                     </div>
 
-                    <div className="flex space-x-3">
+                    <div className="flex flex-wrap gap-3">
                       <button
-                        onClick={() => handleAnalyze(activeTab, false)}
+                        onClick={() => handleAnalyze(activeTab, false, false)}
                         disabled={analyzing || !selectedDocsByTab[activeTab] || selectedDocsByTab[activeTab].length === 0}
                         className="btn-primary"
                       >
@@ -614,7 +632,7 @@ export default function ProjectView() {
                       </button>
 
                       <button
-                        onClick={() => handleAnalyze(activeTab, true)}
+                        onClick={() => handleAnalyze(activeTab, true, false)}
                         disabled={analyzing || !selectedDocsByTab[activeTab] || selectedDocsByTab[activeTab].length === 0}
                         className="btn-secondary"
                       >
@@ -625,6 +643,24 @@ export default function ProjectView() {
                           </span>
                         ) : (
                           '⭐ Deep Análisis con IA'
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleAnalyze(activeTab, false, true)}
+                        disabled={analyzing || !selectedDocsByTab[activeTab] || selectedDocsByTab[activeTab].length === 0}
+                        className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg"
+                      >
+                        {analyzing ? (
+                          <span className="flex items-center space-x-2">
+                            <Loader className="w-4 h-4 animate-spin" />
+                            <span>Análisis Paralelo...</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center space-x-2">
+                            <Zap className="w-4 h-4" />
+                            <span>⚡ Análisis Paralelo (10 prompts)</span>
+                          </span>
                         )}
                       </button>
                     </div>
@@ -658,6 +694,8 @@ export default function ProjectView() {
                                   duration: analysis.duration_ms,
                                   created_at: analysis.created_at
                                 });
+                                const isParallel = analysis.analysis_type?.includes('parallel');
+                                setIsParallelAnalysis(isParallel);
                               }}
                               className={`px-3 py-2 text-xs rounded bg-white dark:bg-gray-700 border transition-colors ${
                                 currentAnalysisId === analysis.id
@@ -693,15 +731,17 @@ export default function ProjectView() {
                         </h4>
                               {resultMetadata && (
                                 <span className={`px-2 py-1 rounded-full font-medium text-xs ${
-                                  resultMetadata.model === 'gpt-5' 
-                                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' 
-                                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                  isParallelAnalysis
+                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                                    : resultMetadata.model === 'gpt-5' 
+                                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' 
+                                      : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                                 }`}>
-                                  {resultMetadata.model === 'gpt-5' ? '⭐ Deep Análisis' : '✨ Análisis IA'}
+                                  {isParallelAnalysis ? '⚡ Análisis Paralelo' : resultMetadata.model === 'gpt-5' ? '⭐ Deep Análisis' : '✨ Análisis IA'}
                                 </span>
                               )}
                             </div>
-                            {resultMetadata && (
+                            {resultMetadata && !isParallelAnalysis && (
                               <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                                 <span>{Math.round(resultMetadata.duration / 1000)}s</span>
                                 <span>{resultMetadata.tokens_used?.toLocaleString()} tokens</span>
@@ -739,7 +779,8 @@ export default function ProjectView() {
                                 const link = document.createElement('a');
                                 link.href = url;
                                 const analysisType = activeTab === 'pliego' ? 'Analisis_Tecnico' : 'Analisis_Contrato';
-                                link.download = `${analysisType}_${new Date().toISOString().split('T')[0]}.json`;
+                                const suffix = isParallelAnalysis ? '_Paralelo' : '';
+                                link.download = `${analysisType}${suffix}_${new Date().toISOString().split('T')[0]}.json`;
                                 link.click();
                                 URL.revokeObjectURL(url);
                               }}
@@ -754,11 +795,15 @@ export default function ProjectView() {
                         </div>
                         
                         {/* Contenido del resultado */}
-                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
-                        <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                          {JSON.stringify(result, null, 2)}
-                        </pre>
-                        </div>
+                        {isParallelAnalysis ? (
+                          <ParallelAnalysisResult result={result} metadata={resultMetadata} />
+                        ) : (
+                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+                            <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                              {JSON.stringify(result, null, 2)}
+                            </pre>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

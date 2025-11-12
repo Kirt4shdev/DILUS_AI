@@ -5,11 +5,17 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Sun, Moon, LogOut, Shield, User, Home, ArrowLeft } from 'lucide-react';
 
 export default function Header({ title }) {
-  const { user, logout, isAdmin } = useAuth();
+  const auth = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   
+  // Manejar caso de HMR donde el contexto no está disponible
+  if (!auth) {
+    return null;
+  }
+
+  const { user, logout, isAdmin } = auth;
   const isAdminPage = location.pathname.startsWith('/admin');
   const isProjectPage = location.pathname.startsWith('/project/');
 

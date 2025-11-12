@@ -47,16 +47,16 @@ export async function authenticateToken(req, res, next) {
     const user = result.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({ error: 'Usuario desactivado' });
+      return res.status(401).json({ error: 'Usuario desactivado' });
     }
 
     req.user = user;
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      return res.status(403).json({ error: 'Token inválido' });
+      return res.status(401).json({ error: 'Token inválido' });
     } else if (error instanceof jwt.TokenExpiredError) {
-      return res.status(403).json({ error: 'Token expirado' });
+      return res.status(401).json({ error: 'Token expirado' });
     }
     logger.error('Error en autenticación', error);
     return res.status(500).json({ error: 'Error en autenticación' });

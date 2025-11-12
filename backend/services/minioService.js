@@ -16,26 +16,63 @@ const s3Client = new S3Client({
 const BUCKET_NAME = process.env.MINIO_BUCKET || 'dilus-ai';
 
 /**
- * Inicializar MinIO (crear bucket si no existe)
+ * Función auxiliar para esperar un tiempo determinado
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Inicializar MinIO (crear bucket si no existe) con reintentos automáticos
  */
 export async function initMinIO() {
-  try {
-    // Verificar si el bucket existe
-    await s3Client.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
-    logger.info(`✅ MinIO bucket "${BUCKET_NAME}" exists`);
-  } catch (error) {
-    if (error.name === 'NotFound') {
-      // Crear bucket
-      try {
-        await s3Client.send(new CreateBucketCommand({ Bucket: BUCKET_NAME }));
-        logger.info(`✅ MinIO bucket "${BUCKET_NAME}" created`);
-      } catch (createError) {
-        logger.error('Error creating MinIO bucket', createError);
-        throw createError;
+  const maxRetries = 10;
+  const retryDelay = 2000; // 2 segundos entre reintentos
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logger.info(`🔄 Attempting to connect to MinIO (attempt ${attempt}/${maxRetries})...`);
+      
+      // Verificar si el bucket existe
+      await s3Client.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
+      logger.info(`✅ MinIO bucket "${BUCKET_NAME}" exists`);
+      
+      // Conexión exitosa, salir del loop
+      return;
+      
+    } catch (error) {
+      if (error.name === 'NotFound') {
+        // Bucket no existe, intentar crearlo
+        try {
+          await s3Client.send(new CreateBucketCommand({ Bucket: BUCKET_NAME }));
+          logger.info(`✅ MinIO bucket "${BUCKET_NAME}" created`);
+          return; // Bucket creado exitosamente
+        } catch (createError) {
+          // Error al crear bucket
+          const errorMessage = createError.message || 'Unknown error';
+          
+          if (attempt === maxRetries) {
+            logger.error(`❌ Failed to create MinIO bucket after ${maxRetries} attempts`, createError);
+            throw createError;
+          }
+          
+          logger.warn(`⚠️  MinIO bucket creation failed (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+          logger.info(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
+          await sleep(retryDelay);
+        }
+      } else {
+        // Error de conexión u otro error
+        const errorMessage = error.message || 'Unknown error';
+        
+        if (attempt === maxRetries) {
+          logger.error(`❌ Failed to connect to MinIO after ${maxRetries} attempts`, error);
+          throw error;
+        }
+        
+        logger.warn(`⚠️  MinIO connection failed (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+        logger.info(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
+        await sleep(retryDelay);
       }
-    } else {
-      logger.error('Error checking MinIO bucket', error);
-      throw error;
     }
   }
 }
