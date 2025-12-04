@@ -10,7 +10,9 @@ const s3Client = new S3Client({
     accessKeyId: process.env.MINIO_ACCESS_KEY || 'dilus_admin',
     secretAccessKey: process.env.MINIO_SECRET_KEY || 'dilus_secret_2025'
   },
-  forcePathStyle: true // Necesario para MinIO
+  forcePathStyle: true, // Necesario para MinIO
+  tls: false, // Deshabilitar TLS para conexiones HTTP
+  signatureVersion: 'v4' // Usar firma v4
 });
 
 const BUCKET_NAME = process.env.MINIO_BUCKET || 'dilus-ai';
@@ -99,25 +101,49 @@ export async function uploadFile(filename, buffer, mimetype, metadata = {}) {
       originalFilename: filename,
       sanitizedKey: key,
       size: buffer.length,
-      mimetype 
+      mimetype,
+      bucketName: BUCKET_NAME,
+      endpoint: process.env.MINIO_ENDPOINT,
+      hasBuffer: !!buffer,
+      bufferType: buffer.constructor.name
     });
 
-    await s3Client.send(new PutObjectCommand({
+    // Convertir metadata strings para evitar problemas
+    const cleanMetadata = {};
+    for (const [key, value] of Object.entries(metadata)) {
+      cleanMetadata[key] = String(value);
+    }
+    
+    // Asegurar que el buffer es un Buffer válido
+    const bodyBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+
+    const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
-      Body: buffer,
+      Body: bodyBuffer,
       ContentType: mimetype,
-      Metadata: {
-        ...metadata,
-        originalFilename: filename // Guardar nombre original en metadata
-      }
-    }));
+      Metadata: cleanMetadata
+    });
+
+    logger.debug('Sending PutObjectCommand', { 
+      bucket: BUCKET_NAME,
+      key: key,
+      contentType: mimetype
+    });
+
+    await s3Client.send(command);
 
     logger.info('File uploaded to MinIO', { key, originalFilename: filename });
 
     return key;
   } catch (error) {
     logger.error('Error uploading file to MinIO', error);
+    logger.error('Error details', {
+      name: error.name,
+      code: error.Code,
+      message: error.message,
+      statusCode: error.$metadata?.httpStatusCode
+    });
     throw new Error(`Error al subir archivo a MinIO: ${error.message}`);
   }
 }

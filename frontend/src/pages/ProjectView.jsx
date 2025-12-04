@@ -178,7 +178,9 @@ export default function ProjectView() {
         documentacion: prev.documentacion.filter(id => id !== deleteDocConfirmModal)
       }));
     } catch (error) {
-      toast.error('Error al eliminar documento');
+      console.error('Error deleting document:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Error al eliminar documento';
+      toast.error(errorMessage);
       setDeleteDocConfirmModal(null);
     }
   };

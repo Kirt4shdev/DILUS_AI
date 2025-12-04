@@ -7,6 +7,7 @@ import { extractText } from '../services/documentService.js';
 import { ingestDocument } from '../services/ragService.js';
 import { validateFileType } from '../utils/validators.js';
 import { logger } from '../utils/logger.js';
+import { getDocumentMetadata, updateDocumentMetadata } from '../services/metadataService.js';
 
 const router = express.Router();
 
@@ -126,10 +127,129 @@ router.get('/projects/:projectId/documents', async (req, res, next) => {
 });
 
 /**
+ * GET /api/documents/:id/metadata
+ * Obtener metadata de un documento
+ */
+router.get('/documents/:id/metadata', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el documento existe y el usuario tiene acceso
+    const result = await query(
+      `SELECT d.*, p.user_id 
+       FROM documents d
+       LEFT JOIN projects p ON d.project_id = p.id
+       WHERE d.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento no encontrado' });
+    }
+
+    const document = result.rows[0];
+
+    // Verificar permisos
+    if (document.user_id !== req.user.id && !document.is_vault_document && !req.user.is_admin) {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    // Obtener metadata del documento
+    const metadata = await getDocumentMetadata(id);
+
+    return res.json({ 
+      documentId: id,
+      metadata: metadata || {
+        doc_type: 'otro',
+        source: 'externo',
+        creation_origin: 'humano',
+        project_id: document.project_id,
+        equipo: null,
+        fabricante: null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/documents/:id/metadata
+ * Actualizar metadata de un documento
+ */
+router.put('/documents/:id/metadata', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { doc_type, source, creation_origin, project_id, equipo, fabricante } = req.body;
+
+    logger.info('Update metadata request', { 
+      documentId: id, 
+      userId: req.user.id,
+      metadata: req.body
+    });
+
+    // Verificar que el documento existe y el usuario tiene acceso
+    const result = await query(
+      `SELECT d.*, p.user_id 
+       FROM documents d
+       LEFT JOIN projects p ON d.project_id = p.id
+       WHERE d.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento no encontrado' });
+    }
+
+    const document = result.rows[0];
+
+    // Verificar permisos (solo el dueño o admin)
+    if (document.user_id !== req.user.id && !req.user.is_admin) {
+      logger.warn('Access denied for metadata update', { 
+        documentId: id, 
+        userId: req.user.id,
+        documentOwnerId: document.user_id 
+      });
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    // Actualizar metadata
+    const updateResult = await updateDocumentMetadata(id, {
+      doc_type,
+      source,
+      creation_origin,
+      project_id,
+      equipo,
+      fabricante
+    });
+
+    logger.info('Document metadata updated', { 
+      documentId: id, 
+      userId: req.user.id,
+      chunksUpdated: updateResult.chunksUpdated
+    });
+
+    return res.json({
+      message: 'Metadata actualizado exitosamente',
+      documentId: id,
+      chunksUpdated: updateResult.chunksUpdated,
+      metadata: updateResult.metadata
+    });
+  } catch (error) {
+    logger.error('Error updating document metadata', { 
+      documentId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
+    next(error);
+  }
+});
+
+/**
  * GET /api/documents/:id
  * Obtener información de un documento
  */
-router.get('/:id', async (req, res, next) => {
+router.get('/documents/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -162,7 +282,7 @@ router.get('/:id', async (req, res, next) => {
  * GET /api/documents/:id/download
  * Descargar documento
  */
-router.get('/:id/download', async (req, res, next) => {
+router.get('/documents/:id/download', async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -204,9 +324,11 @@ router.get('/:id/download', async (req, res, next) => {
  * DELETE /api/documents/:id
  * Eliminar documento
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/documents/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    logger.debug('Delete document request', { documentId: id, userId: req.user.id });
 
     const result = await query(
       `SELECT d.*, p.user_id 
@@ -217,6 +339,7 @@ router.delete('/:id', async (req, res, next) => {
     );
 
     if (result.rows.length === 0) {
+      logger.warn('Document not found for deletion', { documentId: id });
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
@@ -224,11 +347,30 @@ router.delete('/:id', async (req, res, next) => {
 
     // Verificar permisos
     if (document.user_id !== req.user.id && !req.user.is_admin) {
+      logger.warn('Access denied for document deletion', { 
+        documentId: id, 
+        userId: req.user.id,
+        documentOwnerId: document.user_id 
+      });
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
+    logger.debug('Deleting file from MinIO', { 
+      documentId: id, 
+      filePath: document.file_path 
+    });
+
     // Eliminar de MinIO
-    await deleteFile(document.file_path);
+    try {
+      await deleteFile(document.file_path);
+      logger.debug('File deleted from MinIO successfully', { documentId: id });
+    } catch (minioError) {
+      logger.error('MinIO deletion failed but continuing with DB deletion', { 
+        documentId: id, 
+        error: minioError.message 
+      });
+      // Continuar incluso si MinIO falla (el archivo puede no existir)
+    }
 
     // Eliminar de base de datos (CASCADE eliminará embeddings)
     await query('DELETE FROM documents WHERE id = $1', [id]);
@@ -237,6 +379,11 @@ router.delete('/:id', async (req, res, next) => {
 
     return res.json({ message: 'Documento eliminado exitosamente' });
   } catch (error) {
+    logger.error('Error in delete document endpoint', { 
+      documentId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 });

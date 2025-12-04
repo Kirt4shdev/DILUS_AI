@@ -1,8 +1,10 @@
+// IMPORTANTE: Cargar variables de entorno PRIMERO
+import './loadEnv.js';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import { initDatabase } from './config/database.js';
 import { initMinIO } from './services/minioService.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -17,9 +19,6 @@ import analysisRoutes from './routes/analysis.js';
 import vaultRoutes from './routes/vault.js';
 import adminRoutes from './routes/admin.js';
 import statsRoutes from './routes/stats.js';
-
-// Cargar variables de entorno
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;

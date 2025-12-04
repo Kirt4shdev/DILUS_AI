@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers, Edit } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
 import TokenStatsView from '../components/TokenStatsView';
+import EditMetadataModal from '../components/EditMetadataModal';
 import apiClient from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
@@ -18,6 +19,7 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
+  const [editMetadataModal, setEditMetadataModal] = useState(null);
   
   // Chunks RAG state
   const [chunks, setChunks] = useState([]);
@@ -452,13 +454,24 @@ export default function AdminPanel() {
                           {new Date(doc.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => setDeleteConfirmModal({ id: doc.id, filename: doc.filename })}
-                            className="text-red-600 hover:text-red-700 dark:text-red-400"
-                            title="Eliminar documento"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center space-x-2">
+                            {doc.vectorization_status === 'completed' && (
+                              <button
+                                onClick={() => setEditMetadataModal({ id: doc.id, filename: doc.filename })}
+                                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:dark:text-blue-300"
+                                title="Editar metadata"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setDeleteConfirmModal({ id: doc.id, filename: doc.filename })}
+                              className="text-red-600 hover:text-red-700 dark:text-red-400"
+                              title="Eliminar documento"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1398,6 +1411,18 @@ export default function AdminPanel() {
           </button>
         </div>
       </Modal>
+
+      {/* Modal Editar Metadata */}
+      {editMetadataModal && (
+        <EditMetadataModal
+          documentId={editMetadataModal.id}
+          isOpen={!!editMetadataModal}
+          onClose={() => setEditMetadataModal(null)}
+          onSuccess={() => {
+            loadCodexDocs();
+          }}
+        />
+      )}
     </div>
   );
 }

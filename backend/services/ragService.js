@@ -4,6 +4,7 @@ import { chunkText } from './documentService.js';
 import { logger } from '../utils/logger.js';
 import { estimateTokens, calculateEmbeddingCost, getCurrentEmbeddingModel } from '../utils/tokenCounter.js';
 import { getConfigValue } from './ragConfigService.js';
+import { extractDocumentMetadata, buildChunkMetadata } from './metadataService.js';
 
 // Valores por defecto (fallback si no hay BD)
 const DEFAULT_CHUNK_SIZE = parseInt(process.env.RAG_CHUNK_SIZE) || 1000;
@@ -100,12 +101,21 @@ export async function ingestDocument(documentId, text, metadata = {}) {
     logger.debug('RAG params loaded', { params });
 
     // Obtener info del documento para logging de costes
-    const docResult = await query('SELECT uploaded_by, project_id, filename FROM documents WHERE id = $1', [documentId]);
-    const userId = docResult.rows[0]?.uploaded_by;
-    const projectId = docResult.rows[0]?.project_id;
-    const filename = docResult.rows[0]?.filename;
+    const docResult = await query(
+      'SELECT uploaded_by, project_id, filename, mime_type, is_vault_document FROM documents WHERE id = $1', 
+      [documentId]
+    );
+    const docInfo = docResult.rows[0];
+    const userId = docInfo?.uploaded_by;
+    const projectId = docInfo?.project_id;
+    const filename = docInfo?.filename;
 
     logger.info('Document info retrieved', { documentId, filename, userId, projectId });
+
+    // EXTRACCIÓN AUTOMÁTICA DE METADATA CON IA
+    logger.info('Extracting document metadata with GPT-5-mini', { documentId, filename });
+    const extractedMetadata = await extractDocumentMetadata(text, filename);
+    logger.info('Metadata extracted', { documentId, extractedMetadata });
 
     // Actualizar estado a processing
     await query(
@@ -142,11 +152,32 @@ export async function ingestDocument(documentId, text, metadata = {}) {
 
       const embeddings = await generateEmbeddings(texts);
 
-      // Guardar en base de datos
+      // Guardar en base de datos con metadata enriquecido
       for (let j = 0; j < batch.length; j++) {
         const chunkIndex = i + j;
         const embedding = embeddings[j];
         const chunk = batch[j];
+
+        // Construir metadata completo (doc + chunk + embedding)
+        const chunkMetadata = buildChunkMetadata(
+          {
+            filename: docInfo.filename,
+            uploaded_by: docInfo.uploaded_by,
+            project_id: docInfo.project_id,
+            mime_type: docInfo.mime_type,
+            is_vault_document: docInfo.is_vault_document,
+            creation_origin: metadata.creation_origin || 'humano'
+          },
+          {
+            chunk_index: chunkIndex,
+            startIndex: chunk.startIndex,
+            endIndex: chunk.endIndex,
+            chunk_method: chunkingMethod,
+            chunk_length: chunk.text.length,
+            chunk_tokens: estimateTokens(chunk.text)
+          },
+          extractedMetadata
+        );
 
         await query(
           `INSERT INTO embeddings (document_id, chunk_text, chunk_index, embedding, metadata)
@@ -156,7 +187,7 @@ export async function ingestDocument(documentId, text, metadata = {}) {
             chunk.text,
             chunkIndex,
             JSON.stringify(embedding),
-            JSON.stringify({ ...metadata, start: chunk.startIndex, end: chunk.endIndex })
+            JSON.stringify(chunkMetadata)
           ]
         );
       }
@@ -220,6 +251,30 @@ export async function ingestDocument(documentId, text, metadata = {}) {
 }
 
 /**
+ * Detectar si la query menciona un equipo específico
+ * Busca patrones comunes de nombres de equipos en la query
+ * @param {string} queryText - Texto de la query
+ * @returns {string|null} - Nombre del equipo detectado o null
+ */
+function detectEquipmentInQuery(queryText) {
+  if (!queryText) return null;
+  
+  // Patrones comunes de equipos (letras + números)
+  // Ej: WS600, RPU-3000, ABC-123, etc.
+  const equipmentPattern = /\b([A-Z]{2,}[-_\s]?\d{2,})\b/gi;
+  const matches = queryText.match(equipmentPattern);
+  
+  if (matches && matches.length > 0) {
+    // Retornar el primer match normalizado
+    const equipment = matches[0].trim().toUpperCase();
+    logger.debug('Equipment detected in query', { query: queryText, equipment });
+    return equipment;
+  }
+  
+  return null;
+}
+
+/**
  * Buscar chunks similares usando búsqueda híbrida
  */
 export async function searchSimilar(queryText, options = {}) {
@@ -232,10 +287,22 @@ export async function searchSimilar(queryText, options = {}) {
       topK = options.topK || params.topK,
       isVaultOnly = false,
       userId = null,
-      projectId = null
+      projectId = null,
+      filterByEquipment = true // Nuevo parámetro para habilitar/deshabilitar filtro
     } = options;
 
     logger.debug('Searching similar chunks', { queryText: queryText.substring(0, 50), options, params });
+
+    // DETECCIÓN DE EQUIPO EN LA QUERY
+    let detectedEquipment = null;
+    if (filterByEquipment && !documentId) {
+      detectedEquipment = detectEquipmentInQuery(queryText);
+      if (detectedEquipment) {
+        logger.info('Equipment detected in query, will filter by metadata', { 
+          equipment: detectedEquipment 
+        });
+      }
+    }
 
     // Calcular tokens y registrar coste
     const queryTokens = estimateTokens(queryText);
@@ -251,7 +318,8 @@ export async function searchSimilar(queryText, options = {}) {
       projectId,
       metadata: {
         queryLength: queryText.length,
-        topK
+        topK,
+        detectedEquipment
       }
     });
 
@@ -279,12 +347,16 @@ export async function searchSimilar(queryText, options = {}) {
         JOIN documents d ON e.document_id = d.id
         WHERE 
           d.is_vault_document = TRUE
+          ${detectedEquipment ? `AND (e.metadata->>'doc'->>'equipo' ILIKE $4 OR e.metadata->'doc'->>'equipo' ILIKE $4)` : ''}
         ORDER BY hybrid_score DESC
         LIMIT $3
       `;
-      sqlParams = [JSON.stringify(queryEmbedding), queryText, topK];
+      sqlParams = detectedEquipment 
+        ? [JSON.stringify(queryEmbedding), queryText, topK, `%${detectedEquipment}%`]
+        : [JSON.stringify(queryEmbedding), queryText, topK];
+        
     } else if (documentId) {
-      // Buscar en documento específico
+      // Buscar en documento específico (sin filtro de equipo)
       sql = `
         SELECT 
           e.id,
@@ -305,8 +377,10 @@ export async function searchSimilar(queryText, options = {}) {
         LIMIT $4
       `;
       sqlParams = [JSON.stringify(queryEmbedding), queryText, documentId, topK];
+      
     } else {
       // Buscar en todos los documentos
+      // Si se detectó equipo, filtrar por metadata
       sql = `
         SELECT 
           e.id,
@@ -323,13 +397,31 @@ export async function searchSimilar(queryText, options = {}) {
           d.filename
         FROM embeddings e
         JOIN documents d ON e.document_id = d.id
+        ${detectedEquipment ? `WHERE (e.metadata->'doc'->>'equipo' ILIKE $4 OR e.metadata->'doc'->>'fabricante' ILIKE $4)` : ''}
         ORDER BY hybrid_score DESC
         LIMIT $3
       `;
-      sqlParams = [JSON.stringify(queryEmbedding), queryText, topK];
+      sqlParams = detectedEquipment
+        ? [JSON.stringify(queryEmbedding), queryText, topK, `%${detectedEquipment}%`]
+        : [JSON.stringify(queryEmbedding), queryText, topK];
     }
 
     const result = await query(sql, sqlParams);
+
+    logger.info('RAG query executed', {
+      requestedTopK: topK,
+      sqlResultCount: result.rows.length,
+      detectedEquipment,
+      filteredByEquipment: !!detectedEquipment,
+      firstResult: result.rows[0] ? {
+        vector_similarity: result.rows[0].vector_similarity,
+        hybrid_score: result.rows[0].hybrid_score
+      } : null,
+      thresholds: { 
+        minSimilarity: params.minSimilarity, 
+        minHybridScore: params.minHybridScore 
+      }
+    });
 
     // Filtro con parámetros dinámicos
     const filteredResults = result.rows.filter(row => 
@@ -337,11 +429,19 @@ export async function searchSimilar(queryText, options = {}) {
     );
 
     logger.info('Search completed', { 
-      totalResults: result.rows.length,
-      filteredResults: filteredResults.length,
+      requestedTopK: topK,
+      sqlResults: result.rows.length,
+      afterFilterResults: filteredResults.length,
+      rejectedByFilter: result.rows.length - filteredResults.length,
       topScore: result.rows[0]?.hybrid_score || 0,
       topSimilarity: result.rows[0]?.vector_similarity || 0,
-      thresholds: { minSimilarity: params.minSimilarity, minHybridScore: params.minHybridScore }
+      thresholds: { minSimilarity: params.minSimilarity, minHybridScore: params.minHybridScore },
+      detectedEquipment,
+      allScores: result.rows.slice(0, 5).map(r => ({
+        vectorSim: r.vector_similarity?.toFixed(3),
+        hybridScore: r.hybrid_score?.toFixed(3),
+        passedFilter: (r.vector_similarity >= params.minSimilarity || r.hybrid_score >= params.minHybridScore)
+      }))
     });
 
     // Retornar resultados con metadata de filtrado para logging posterior
@@ -352,7 +452,9 @@ export async function searchSimilar(queryText, options = {}) {
         selectedCount: filteredResults.length,
         rejectedCount: result.rows.length - filteredResults.length,
         minSimilarityThreshold: params.minSimilarity,
-        minHybridThreshold: params.minHybridScore
+        minHybridThreshold: params.minHybridScore,
+        detectedEquipment,
+        filteredByEquipment: !!detectedEquipment
       }
     };
   } catch (error) {
