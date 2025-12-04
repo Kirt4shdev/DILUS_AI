@@ -9,7 +9,8 @@ export default function CodexDilusWidget() {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [progressMessage, setProgressMessage] = useState('');
+  const [progressSteps, setProgressSteps] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
   const messagesEndRef = React.useRef(null);
 
   const scrollToBottom = () => {
@@ -26,6 +27,7 @@ export default function CodexDilusWidget() {
     if (!query.trim()) return;
 
     const userQuery = query.trim();
+    const queryStartTime = Date.now();
     
     // Agregar mensaje del usuario al historial
     setMessages(prev => [...prev, {
@@ -36,17 +38,45 @@ export default function CodexDilusWidget() {
 
     setQuery('');
     setLoading(true);
+    setCurrentStep(0);
+    
+    // Inicializar pasos de progreso
+    const steps = [
+      { id: 1, text: 'Analizando consulta...', status: 'active', time: null },
+      { id: 2, text: 'Detectando equipos (fuzzy match)...', status: 'pending', time: null },
+      { id: 3, text: 'Buscando en Codex (Vector + BM25)...', status: 'pending', time: null },
+      { id: 4, text: 'Preparando contexto...', status: 'pending', time: null },
+      { id: 5, text: 'Generando respuesta con GPT-5-mini...', status: 'pending', time: null },
+      { id: 6, text: 'Guardando estadísticas...', status: 'pending', time: null }
+    ];
+    console.log('🔍 Iniciando progreso con pasos:', steps);
+    setProgressSteps(steps);
 
     try {
-      // Paso 1: Analizando consulta
-      setProgressMessage('Analizando tu consulta...');
+      // Paso 1
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 1 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(1);
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Paso 2: Buscando en el Codex Dilus
-      setProgressMessage('Buscando en el Codex Dilus...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Paso 2
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 1 ? { ...step, status: 'completed', time: 0.3 } :
+        step.id === 2 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(2);
+      await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Construir historial de conversación (excluir mensajes de error y el mensaje actual)
+      // Paso 3 - Llamada real al backend
+      const step3Start = Date.now();
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 2 ? { ...step, status: 'completed', time: 0.2 } :
+        step.id === 3 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(3);
+      
+      // Construir historial de conversación
       const conversationHistory = messages
         .filter(msg => msg.type === 'user' || msg.type === 'assistant')
         .map(msg => ({
@@ -59,37 +89,59 @@ export default function CodexDilusWidget() {
         conversation_history: conversationHistory
       });
       
-      // Paso 3: Indicar fuente
-      if (res.data.source_type === 'library') {
-        setProgressMessage('✓ Datos encontrados en el Codex Dilus');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setProgressMessage('Generando respuesta con contexto previo...');
-      } else {
-        setProgressMessage('⚠ No hay datos en el Codex Dilus');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setProgressMessage('Buscando información externa con contexto previo...');
-      }
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const step3Time = ((Date.now() - step3Start) / 1000).toFixed(2);
+      const timings = res.data.metadata?.timings || {};
       
-      // Paso 4: Procesando respuesta
-      setProgressMessage('Procesando respuesta...');
+      // Paso 4
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 3 ? { ...step, status: 'completed', time: step3Time } :
+        step.id === 4 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(4);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Paso 5
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 4 ? { ...step, status: 'completed', time: timings.contextPrep ? (timings.contextPrep / 1000).toFixed(2) : '0.2' } :
+        step.id === 5 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(5);
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Agregar respuesta del asistente al historial
+      // Paso 6
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 5 ? { ...step, status: 'completed', time: timings.aiGeneration ? (timings.aiGeneration / 1000).toFixed(2) : '3.0' } :
+        step.id === 6 ? { ...step, status: 'active' } : step
+      ));
+      setCurrentStep(6);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Completar
+      const totalTime = ((Date.now() - queryStartTime) / 1000).toFixed(2);
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 6 ? { ...step, status: 'completed', time: timings.dbSave ? (timings.dbSave / 1000).toFixed(2) : '0.1' } : step
+      ));
+      
+      // Agregar respuesta del asistente al historial con tiempos
       setMessages(prev => [...prev, {
         type: 'assistant',
         text: res.data.response,
         source_type: res.data.source_type,
         sources: res.data.sources,
         chunks_used: res.data.chunks_used,
-        timestamp: new Date()
+        timestamp: new Date(),
+        timings: timings.ragSearch ? {
+          total: totalTime,
+          ragSearch: (timings.ragSearch / 1000).toFixed(2),
+          aiGeneration: (timings.aiGeneration / 1000).toFixed(2),
+          breakdown: timings
+        } : null
       }]);
       
-      setProgressMessage('');
+      setProgressSteps([]);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al consultar al Codex Dilus');
-      setProgressMessage('');
-      // Agregar mensaje de error al historial
+      setProgressSteps([]);
       setMessages(prev => [...prev, {
         type: 'error',
         text: err.response?.data?.error || 'Error al consultar al Codex Dilus',
@@ -97,6 +149,7 @@ export default function CodexDilusWidget() {
       }]);
     } finally {
       setLoading(false);
+      setCurrentStep(0);
     }
   };
 
@@ -200,6 +253,29 @@ export default function CodexDilusWidget() {
                       </ul>
                     </div>
                   )}
+
+                  {/* Tiempos de respuesta */}
+                  {message.timings && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2 ml-2 border border-blue-200 dark:border-blue-800">
+                      <h4 className="font-medium text-blue-700 dark:text-blue-300 mb-1 text-xs">
+                        ⏱️ Tiempos de Procesamiento
+                      </h4>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-blue-600 dark:text-blue-400">Búsqueda RAG:</span>
+                          <span className="font-mono text-blue-700 dark:text-blue-300">{message.timings.ragSearch}s</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-600 dark:text-blue-400">Generación IA:</span>
+                          <span className="font-mono text-blue-700 dark:text-blue-300">{message.timings.aiGeneration}s</span>
+                        </div>
+                        <div className="flex justify-between font-semibold border-t border-blue-200 dark:border-blue-700 pt-1 mt-1">
+                          <span className="text-blue-700 dark:text-blue-200">Total:</span>
+                          <span className="font-mono text-blue-800 dark:text-blue-100">{message.timings.total}s</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -214,14 +290,56 @@ export default function CodexDilusWidget() {
           </div>
         ))}
 
-        {/* Indicador de carga */}
+        {/* Indicador de carga con pasos detallados */}
         {loading && (
           <div className="flex justify-start">
-            <div className="flex items-center space-x-3 py-3 px-4 rounded-lg bg-gray-100 dark:bg-gray-800 rounded-tl-none">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-400"></div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-                {progressMessage || 'Consultando...'}
-              </p>
+            <div className="w-full space-y-1.5 py-2 px-3 rounded-lg bg-gray-100 dark:bg-gray-800 rounded-tl-none">
+              {progressSteps.length > 0 ? (
+                progressSteps.map((step) => (
+                  <div key={step.id} className="flex items-center space-x-2">
+                    <div className="flex-shrink-0">
+                      {step.status === 'completed' ? (
+                        <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                          <span className="text-white text-xs font-bold">✓</span>
+                        </div>
+                      ) : step.status === 'active' ? (
+                        <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                          <span className="text-gray-500 dark:text-gray-400 text-xs">{step.id}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs ${
+                        step.status === 'completed' ? 'text-gray-600 dark:text-gray-400' :
+                        step.status === 'active' ? 'text-gray-900 dark:text-gray-100 font-medium' :
+                        'text-gray-400 dark:text-gray-500'
+                      }`}>
+                        {step.text}
+                      </p>
+                    </div>
+                    {step.time && (
+                      <div className="flex-shrink-0">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                          {step.time}s
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+                  </div>
+                  <p className="text-xs text-gray-900 dark:text-gray-100 font-medium">
+                    Buscando en el Codex Dilus...
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -230,25 +348,27 @@ export default function CodexDilusWidget() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Form - FIJO EN PARTE INFERIOR */}
-      <form onSubmit={handleSubmit} className="flex space-x-2 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Pregunta algo..."
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
+      {/* Input Form - FIJO */}
+      <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+        <form onSubmit={handleSubmit} className="flex space-x-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Escribe tu pregunta..."
+            className="input flex-1 text-sm"
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading || !query.trim()}
+            className="btn-primary flex items-center space-x-2 px-4 py-2"
+          >
+            <Send className="w-4 h-4" />
+            <span className="text-sm">Preguntar</span>
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
-

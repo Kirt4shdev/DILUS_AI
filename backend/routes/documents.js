@@ -15,9 +15,34 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50 MB
+    fileSize: 200 * 1024 * 1024 // 200 MB
   }
 });
+
+// Middleware para manejar errores de multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ 
+        error: 'El archivo es demasiado grande. El tamaño máximo permitido es 200 MB.' 
+      });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ 
+        error: 'Demasiados archivos. Suba un archivo a la vez.' 
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ 
+        error: 'Campo de archivo inesperado.' 
+      });
+    }
+    return res.status(400).json({ 
+      error: `Error al subir archivo: ${err.message}` 
+    });
+  }
+  next(err);
+};
 
 // Todas las rutas requieren autenticación
 router.use(authenticateToken);
@@ -26,7 +51,7 @@ router.use(authenticateToken);
  * POST /api/projects/:projectId/documents
  * Subir documento a un proyecto
  */
-router.post('/projects/:projectId/documents', upload.single('file'), async (req, res, next) => {
+router.post('/projects/:projectId/documents', upload.single('file'), handleMulterError, async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const file = req.file;
@@ -50,6 +75,25 @@ router.post('/projects/:projectId/documents', upload.single('file'), async (req,
 
     if (projectCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    // Verificar si ya existe un documento con el mismo nombre en este proyecto
+    const duplicateCheck = await query(
+      'SELECT id, filename FROM documents WHERE filename = $1 AND project_id = $2',
+      [file.originalname, projectId]
+    );
+
+    if (duplicateCheck.rows.length > 0) {
+      logger.warn('Duplicate document rejected', { 
+        filename: file.originalname,
+        projectId,
+        existingDocId: duplicateCheck.rows[0].id,
+        userId: req.user.id
+      });
+      return res.status(409).json({ 
+        error: `El documento "${file.originalname}" ya existe en este proyecto. Por favor, elimine el documento existente primero o renombre el archivo.`,
+        existingDocumentId: duplicateCheck.rows[0].id
+      });
     }
 
     // Subir a MinIO
@@ -89,6 +133,26 @@ router.post('/projects/:projectId/documents', upload.single('file'), async (req,
       document
     });
   } catch (error) {
+    logger.error('Error uploading document', {
+      projectId: req.params.projectId,
+      filename: req.file?.originalname,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Proporcionar mensajes de error más descriptivos
+    if (error.message && error.message.includes('MinIO')) {
+      return res.status(500).json({ 
+        error: 'Error al guardar el archivo en el almacenamiento. Por favor, intente nuevamente.' 
+      });
+    }
+    
+    if (error.message && error.message.includes('text extraction')) {
+      return res.status(422).json({ 
+        error: 'No se pudo extraer el texto del documento. Verifique que el archivo no esté corrupto o protegido.' 
+      });
+    }
+    
     next(error);
   }
 });

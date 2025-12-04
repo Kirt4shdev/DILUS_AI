@@ -13,10 +13,22 @@ const DEFAULT_TOP_K = parseInt(process.env.RAG_TOP_K) || 5;
 const DEFAULT_MIN_SIMILARITY = parseFloat(process.env.RAG_MIN_SIMILARITY) || 0.3;
 const DEFAULT_MIN_HYBRID_SCORE = parseFloat(process.env.RAG_MIN_HYBRID_SCORE) || 0.25;
 
+// Cache de parámetros RAG en memoria (refresco cada 60 segundos)
+let cachedRAGParams = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60000; // 60 segundos
+
 /**
- * Obtener parámetros dinámicos de configuración
+ * Obtener parámetros dinámicos de configuración (con caché)
  */
 async function getRAGParams() {
+  const now = Date.now();
+  
+  // Usar caché si está vigente
+  if (cachedRAGParams && (now - cacheTimestamp) < CACHE_TTL) {
+    return cachedRAGParams;
+  }
+  
   try {
     const [chunkSize, chunkOverlap, topK, minSimilarity, minHybridScore, vectorWeight, bm25Weight] = await Promise.all([
       getConfigValue('chunk_size', DEFAULT_CHUNK_SIZE),
@@ -24,11 +36,11 @@ async function getRAGParams() {
       getConfigValue('top_k', DEFAULT_TOP_K),
       getConfigValue('min_similarity', DEFAULT_MIN_SIMILARITY),
       getConfigValue('min_hybrid_score', DEFAULT_MIN_HYBRID_SCORE),
-      getConfigValue('vector_weight', 0.6),
-      getConfigValue('bm25_weight', 0.4)
+      getConfigValue('vector_weight', 0.7), // Aumentado de 0.6 a 0.7 (vector es más rápido)
+      getConfigValue('bm25_weight', 0.3)    // Reducido de 0.4 a 0.3
     ]);
 
-    return {
+    cachedRAGParams = {
       chunkSize,
       chunkOverlap,
       topK,
@@ -37,17 +49,22 @@ async function getRAGParams() {
       vectorWeight,
       bm25Weight
     };
+    
+    cacheTimestamp = now;
+    return cachedRAGParams;
   } catch (error) {
     logger.error('Error getting RAG params, using defaults', { error: error.message });
-    return {
+    cachedRAGParams = {
       chunkSize: DEFAULT_CHUNK_SIZE,
       chunkOverlap: DEFAULT_CHUNK_OVERLAP,
       topK: DEFAULT_TOP_K,
       minSimilarity: DEFAULT_MIN_SIMILARITY,
       minHybridScore: DEFAULT_MIN_HYBRID_SCORE,
-      vectorWeight: 0.6,
-      bm25Weight: 0.4
+      vectorWeight: 0.7,
+      bm25Weight: 0.3
     };
+    cacheTimestamp = now;
+    return cachedRAGParams;
   }
 }
 
@@ -368,8 +385,13 @@ function generateEquipmentVariants(equipment) {
  */
 export async function searchSimilar(queryText, options = {}) {
   try {
-    // Obtener parámetros dinámicos
+    const searchStartTime = Date.now();
+    const timings = {};
+    
+    // PASO 1: Obtener parámetros dinámicos
+    const step1Start = Date.now();
     const params = await getRAGParams();
+    timings.step1_getParams = Date.now() - step1Start;
     
     const {
       documentId = null,
@@ -380,9 +402,10 @@ export async function searchSimilar(queryText, options = {}) {
       filterByEquipment = true // Nuevo parámetro para habilitar/deshabilitar filtro
     } = options;
 
-    logger.debug('Searching similar chunks', { queryText: queryText.substring(0, 50), options, params });
+    logger.debug('Searching similar chunks', { queryText: queryText.substring(0, 50), options, params, timing: timings.step1_getParams });
 
-    // DETECCIÓN DE EQUIPO EN LA QUERY (mejorada con fuzzy matching)
+    // PASO 2: DETECCIÓN DE EQUIPO EN LA QUERY (mejorada con fuzzy matching)
+    const step2Start = Date.now();
     let detectedEquipments = [];
     if (filterByEquipment && !documentId) {
       detectedEquipments = detectEquipmentInQuery(queryText);
@@ -393,14 +416,22 @@ export async function searchSimilar(queryText, options = {}) {
         });
       }
     }
+    timings.step2_fuzzyDetection = Date.now() - step2Start;
+    logger.debug('Fuzzy detection completed', { duration: timings.step2_fuzzyDetection });
 
-    // Calcular tokens y registrar coste
+    // PASO 3: Calcular tokens
+    const step3Start = Date.now();
     const queryTokens = estimateTokens(queryText);
+    timings.step3_tokenEstimate = Date.now() - step3Start;
 
-    // Generar embedding de la query
+    // PASO 4: Generar embedding de la query
+    const step4Start = Date.now();
     const queryEmbedding = await generateEmbedding(queryText);
+    timings.step4_generateEmbedding = Date.now() - step4Start;
+    logger.debug('Query embedding generated', { duration: timings.step4_generateEmbedding });
     
-    // Registrar coste de la búsqueda
+    // PASO 5: Registrar coste de la búsqueda
+    const step5Start = Date.now();
     const operationType = isVaultOnly ? 'vault_query' : documentId ? 'document_query' : 'general_query';
     await logEmbeddingCost(operationType, queryTokens, {
       userId,
@@ -412,11 +443,13 @@ export async function searchSimilar(queryText, options = {}) {
         detectedEquipments: detectedEquipments.slice(0, 3)
       }
     });
+    timings.step5_logCost = Date.now() - step5Start;
 
     let sql;
     let sqlParams;
 
-    // Construir condición de filtrado fuzzy si se detectaron equipos
+    // PASO 6: Construir condición de filtrado fuzzy si se detectaron equipos
+    const step6Start = Date.now();
     const buildEquipmentFilter = (paramOffset) => {
       if (detectedEquipments.length === 0) return { condition: '', params: [] };
       
@@ -516,8 +549,14 @@ export async function searchSimilar(queryText, options = {}) {
       `;
       sqlParams = [JSON.stringify(queryEmbedding), queryText, topK, ...equipmentFilter.params];
     }
+    timings.step6_buildQuery = Date.now() - step6Start;
+    logger.debug('SQL query built', { duration: timings.step6_buildQuery });
 
+    // PASO 7: Ejecutar query SQL
+    const step7Start = Date.now();
     const result = await query(sql, sqlParams);
+    timings.step7_sqlExecution = Date.now() - step7Start;
+    logger.debug('SQL query executed', { duration: timings.step7_sqlExecution, rowsReturned: result.rows.length });
 
     logger.info('RAG query executed', {
       requestedTopK: topK,
@@ -536,12 +575,17 @@ export async function searchSimilar(queryText, options = {}) {
       }
     });
 
-    // Filtro con parámetros dinámicos
+    // PASO 8: Filtrar resultados por threshold
+    const step8Start = Date.now();
     const filteredResults = result.rows.filter(row => 
       row.vector_similarity >= params.minSimilarity || row.hybrid_score >= params.minHybridScore
     );
+    timings.step8_filtering = Date.now() - step8Start;
 
-    logger.info('Search completed', { 
+    // Tiempo total
+    timings.total = Date.now() - searchStartTime;
+
+    logger.info('Search completed with detailed timings', { 
       requestedTopK: topK,
       sqlResults: result.rows.length,
       afterFilterResults: filteredResults.length,
@@ -551,6 +595,19 @@ export async function searchSimilar(queryText, options = {}) {
       thresholds: { minSimilarity: params.minSimilarity, minHybridScore: params.minHybridScore },
       detectedEquipments: detectedEquipments.slice(0, 3),
       fuzzyMatchingActive: detectedEquipments.length > 0,
+      timings: {
+        ...timings,
+        breakdown: {
+          step1_getParams: `${((timings.step1_getParams / timings.total) * 100).toFixed(1)}%`,
+          step2_fuzzyDetection: `${((timings.step2_fuzzyDetection / timings.total) * 100).toFixed(1)}%`,
+          step3_tokenEstimate: `${((timings.step3_tokenEstimate / timings.total) * 100).toFixed(1)}%`,
+          step4_generateEmbedding: `${((timings.step4_generateEmbedding / timings.total) * 100).toFixed(1)}%`,
+          step5_logCost: `${((timings.step5_logCost / timings.total) * 100).toFixed(1)}%`,
+          step6_buildQuery: `${((timings.step6_buildQuery / timings.total) * 100).toFixed(1)}%`,
+          step7_sqlExecution: `${((timings.step7_sqlExecution / timings.total) * 100).toFixed(1)}%`,
+          step8_filtering: `${((timings.step8_filtering / timings.total) * 100).toFixed(1)}%`
+        }
+      },
       allScores: result.rows.slice(0, 5).map(r => ({
         vectorSim: r.vector_similarity?.toFixed(3),
         hybridScore: r.hybrid_score?.toFixed(3),

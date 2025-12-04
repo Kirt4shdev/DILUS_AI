@@ -6,9 +6,9 @@
 CREATE TABLE IF NOT EXISTS embedding_costs (
   id SERIAL PRIMARY KEY,
   operation_type VARCHAR(50) NOT NULL, -- 'document_ingestion', 'query_search', 'chat_query'
-  user_id INTEGER REFERENCES users(id),
-  document_id INTEGER REFERENCES documents(id),
-  project_id INTEGER REFERENCES projects(id),
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
   tokens_used INTEGER NOT NULL,
   cost_usd DECIMAL(10, 6) NOT NULL,
   model_used VARCHAR(50) NOT NULL,

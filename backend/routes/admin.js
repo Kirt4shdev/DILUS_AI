@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { query } from '../config/database.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
-import { uploadFile, deleteFile } from '../services/minioService.js';
+import { uploadFile, deleteFile, getFile } from '../services/minioService.js';
 import { extractText } from '../services/documentService.js';
 import { ingestDocument } from '../services/ragService.js';
 import { validateFileType } from '../utils/validators.js';
@@ -15,9 +15,34 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50 MB
+    fileSize: 200 * 1024 * 1024 // 200 MB
   }
 });
+
+// Middleware para manejar errores de multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ 
+        error: 'El archivo es demasiado grande. El tamaño máximo permitido es 200 MB.' 
+      });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ 
+        error: 'Demasiados archivos. Suba un archivo a la vez.' 
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ 
+        error: 'Campo de archivo inesperado.' 
+      });
+    }
+    return res.status(400).json({ 
+      error: `Error al subir archivo: ${err.message}` 
+    });
+  }
+  next(err);
+};
 
 // Todas las rutas requieren autenticación y rol admin
 router.use(authenticateToken);
@@ -27,7 +52,7 @@ router.use(requireAdmin);
  * POST /api/admin/vault/documents
  * Subir documento a la bóveda
  */
-router.post('/vault/documents', upload.single('file'), async (req, res, next) => {
+router.post('/vault/documents', upload.single('file'), handleMulterError, async (req, res, next) => {
   try {
     const file = req.file;
 
@@ -39,6 +64,24 @@ router.post('/vault/documents', upload.single('file'), async (req, res, next) =>
     if (!validateFileType(file.mimetype)) {
       return res.status(400).json({ 
         error: 'Tipo de archivo no soportado. Use PDF, DOCX o TXT' 
+      });
+    }
+
+    // Verificar si ya existe un documento con el mismo nombre en la bóveda
+    const duplicateCheck = await query(
+      'SELECT id, filename FROM documents WHERE filename = $1 AND is_vault_document = TRUE',
+      [file.originalname]
+    );
+
+    if (duplicateCheck.rows.length > 0) {
+      logger.warn('Duplicate vault document rejected', { 
+        filename: file.originalname,
+        existingDocId: duplicateCheck.rows[0].id,
+        adminId: req.user.id
+      });
+      return res.status(409).json({ 
+        error: `El documento "${file.originalname}" ya existe en el Codex Dilus. Por favor, elimine el documento existente primero o renombre el archivo.`,
+        existingDocumentId: duplicateCheck.rows[0].id
       });
     }
 
@@ -83,6 +126,31 @@ router.post('/vault/documents', upload.single('file'), async (req, res, next) =>
       document
     });
   } catch (error) {
+    logger.error('Error uploading vault document', {
+      filename: req.file?.originalname,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Proporcionar mensajes de error más descriptivos
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ 
+        error: 'El archivo es demasiado grande. El tamaño máximo es 200 MB.' 
+      });
+    }
+    
+    if (error.message && error.message.includes('MinIO')) {
+      return res.status(500).json({ 
+        error: 'Error al guardar el archivo en el almacenamiento. Por favor, intente nuevamente.' 
+      });
+    }
+    
+    if (error.message && error.message.includes('text extraction')) {
+      return res.status(422).json({ 
+        error: 'No se pudo extraer el texto del documento. Verifique que el archivo no esté corrupto o protegido.' 
+      });
+    }
+    
     next(error);
   }
 });
@@ -102,6 +170,154 @@ router.get('/vault/documents', async (req, res, next) => {
       total: result.rows.length
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/vault/documents/:id/retry
+ * Reintentar vectorización de un documento fallido o pendiente
+ */
+router.post('/vault/documents/:id/retry', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el documento existe y es de la bóveda
+    const result = await query(
+      'SELECT * FROM documents WHERE id = $1 AND is_vault_document = TRUE',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento de bóveda no encontrado' });
+    }
+
+    const document = result.rows[0];
+
+    // Solo permitir reintentar si está en failed o pending
+    if (!['failed', 'pending'].includes(document.vectorization_status)) {
+      return res.status(400).json({ 
+        error: `No se puede reintentar un documento en estado "${document.vectorization_status}". Solo se pueden reintentar documentos fallidos o pendientes.`
+      });
+    }
+
+    // Descargar el archivo de MinIO
+    const fileBuffer = await getFile(document.file_path);
+
+    // Marcar como processing
+    await query(
+      'UPDATE documents SET vectorization_status = $1, vectorization_error = NULL WHERE id = $2',
+      ['processing', id]
+    );
+
+    logger.info('Retrying vault document vectorization', { 
+      documentId: id,
+      filename: document.filename,
+      previousStatus: document.vectorization_status,
+      adminId: req.user.id
+    });
+
+    // Iniciar vectorización en background
+    processVaultDocumentVectorization(id, fileBuffer, document.mime_type).catch(error => {
+      logger.error('Retry vectorization failed', { 
+        documentId: id, 
+        error: error.message 
+      });
+    });
+
+    return res.json({
+      message: 'Reintentando vectorización del documento...',
+      documentId: id,
+      filename: document.filename
+    });
+  } catch (error) {
+    logger.error('Error retrying document vectorization', {
+      documentId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/vault/documents/:id/metadata
+ * Actualizar metadata de un documento de la bóveda
+ */
+router.put('/vault/documents/:id/metadata', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const metadata = req.body;
+
+    logger.info('Update vault document metadata request', { 
+      documentId: id, 
+      adminId: req.user.id,
+      metadata
+    });
+
+    // Verificar que el documento existe y es de la bóveda
+    const result = await query(
+      'SELECT * FROM documents WHERE id = $1 AND is_vault_document = TRUE',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento de bóveda no encontrado' });
+    }
+
+    // Construir la actualización de metadata para los chunks
+    const metadataUpdates = {};
+    const allowedFields = [
+      'equipment_type', 'manufacturer', 'model', 'protocol', 
+      'document_type', 'tags', 'equipo', 'fabricante'
+    ];
+
+    allowedFields.forEach(field => {
+      if (metadata[field] !== undefined && metadata[field] !== null && metadata[field] !== '') {
+        metadataUpdates[field] = metadata[field];
+      }
+    });
+
+    if (Object.keys(metadataUpdates).length === 0) {
+      return res.status(400).json({ error: 'No hay campos válidos para actualizar' });
+    }
+
+    // Actualizar los chunks del documento
+    const chunks = await query(
+      'SELECT id, metadata FROM embeddings WHERE document_id = $1',
+      [id]
+    );
+
+    let updatedCount = 0;
+    for (const chunk of chunks.rows) {
+      const currentMetadata = chunk.metadata || {};
+      const newMetadata = { ...currentMetadata, ...metadataUpdates };
+      
+      await query(
+        'UPDATE embeddings SET metadata = $1 WHERE id = $2',
+        [JSON.stringify(newMetadata), chunk.id]
+      );
+      updatedCount++;
+    }
+
+    logger.info('Vault document metadata updated', { 
+      documentId: id, 
+      adminId: req.user.id,
+      chunksUpdated: updatedCount
+    });
+
+    return res.json({
+      message: 'Metadata actualizado exitosamente',
+      documentId: id,
+      chunksUpdated: updatedCount,
+      metadata: metadataUpdates
+    });
+  } catch (error) {
+    logger.error('Error updating vault document metadata', { 
+      documentId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 });
@@ -460,50 +676,80 @@ router.get('/chunks/stats', async (req, res, next) => {
  * Procesar vectorización de documento de bóveda en background
  */
 async function processVaultDocumentVectorization(documentId, buffer, mimetype) {
-  try {
-    logger.info('Starting vault document vectorization', { 
-      documentId, 
-      bufferSize: buffer?.length || 0,
-      mimetype 
-    });
+  const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos timeout
+  
+  // Crear promesa con timeout
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Timeout: El procesamiento del documento ${documentId} excedió los 15 minutos`));
+    }, TIMEOUT_MS);
+  });
 
-    // Extraer texto
-    logger.info('Extracting text from buffer', { documentId, mimetype });
-    const text = await extractText(buffer, mimetype);
-    
-    logger.info('Text extracted successfully', { 
-      documentId, 
-      textLength: text?.length || 0,
-      textPreview: text?.substring(0, 200) || 'EMPTY'
-    });
-
-    // Ingerir en RAG
-    logger.info('Starting RAG ingestion', { documentId });
-    await ingestDocument(documentId, text, {
-      mimetype,
-      source: 'vault',
-      uploaded_by_admin: true
-    });
-
-    logger.info('Vault document vectorized successfully', { documentId });
-  } catch (error) {
-    logger.error('Vault document vectorization failed', { 
-      documentId, 
-      error: error.message,
-      errorStack: error.stack,
-      errorType: error.constructor.name
-    });
-    
-    // Actualizar estado a failed
+  const processingPromise = (async () => {
     try {
-      await query(
-        'UPDATE documents SET vectorization_status = $1, vectorization_error = $2 WHERE id = $3',
-        ['failed', error.message, documentId]
-      );
-    } catch (updateError) {
-      logger.error('Failed to update document status', { documentId, updateError: updateError.message });
+      logger.info('Starting vault document vectorization', { 
+        documentId, 
+        bufferSize: buffer?.length || 0,
+        mimetype 
+      });
+
+      // Extraer texto
+      logger.info('Extracting text from buffer', { documentId, mimetype });
+      const text = await extractText(buffer, mimetype);
+      
+      logger.info('Text extracted successfully', { 
+        documentId, 
+        textLength: text?.length || 0,
+        textPreview: text?.substring(0, 200) || 'EMPTY'
+      });
+
+      // Ingerir en RAG
+      logger.info('Starting RAG ingestion', { documentId });
+      await ingestDocument(documentId, text, {
+        mimetype,
+        source: 'vault',
+        uploaded_by_admin: true
+      });
+
+      logger.info('Vault document vectorized successfully', { documentId });
+    } catch (error) {
+      logger.error('Vault document vectorization failed', { 
+        documentId, 
+        error: error.message,
+        errorStack: error.stack,
+        errorType: error.constructor.name
+      });
+      
+      // Actualizar estado a failed
+      try {
+        await query(
+          'UPDATE documents SET vectorization_status = $1, vectorization_error = $2 WHERE id = $3',
+          ['failed', error.message, documentId]
+        );
+      } catch (updateError) {
+        logger.error('Failed to update document status', { documentId, updateError: updateError.message });
+      }
+      
+      throw error;
     }
-    
+  })();
+
+  try {
+    // Esperar la primera que complete (procesamiento o timeout)
+    await Promise.race([processingPromise, timeoutPromise]);
+  } catch (error) {
+    // Si es timeout, marcar como failed
+    if (error.message.includes('Timeout')) {
+      logger.error('Document vectorization timed out', { documentId, timeout: TIMEOUT_MS });
+      try {
+        await query(
+          'UPDATE documents SET vectorization_status = $1, vectorization_error = $2 WHERE id = $3',
+          ['failed', error.message, documentId]
+        );
+      } catch (updateError) {
+        logger.error('Failed to update document status after timeout', { documentId, updateError: updateError.message });
+      }
+    }
     throw error;
   }
 }

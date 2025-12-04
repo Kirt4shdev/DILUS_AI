@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers, Edit } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers, Edit, CheckSquare, Square, RefreshCw } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -20,6 +20,9 @@ export default function AdminPanel() {
   const [uploading, setUploading] = useState(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
   const [editMetadataModal, setEditMetadataModal] = useState(null);
+  const [selectedDocs, setSelectedDocs] = useState([]);
+  const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
+  const [bulkEditModal, setBulkEditModal] = useState(false);
   
   // Chunks RAG state
   const [chunks, setChunks] = useState([]);
@@ -244,39 +247,67 @@ export default function AdminPanel() {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
+    setUploading(true);
+    
     try {
-      setUploading(true);
+      // Subir archivos UNO POR UNO para mostrar progreso
+      let successCount = 0;
+      let failCount = 0;
+      const errors = [];
       
-      // Subir todos los archivos en paralelo
-      const uploadPromises = files.map(file => {
-        const formData = new FormData();
-        formData.append('file', file);
-        return apiClient.post('/admin/vault/documents', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-      });
-
-      const results = await Promise.allSettled(uploadPromises);
-      
-      // Contar éxitos y fallos
-      const successful = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
-
-      if (successful > 0) {
-        toast.success(`${successful} documento(s) añadido(s) al Codex Dilus exitosamente`);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Mostrar progreso
+          toast.info(`Subiendo ${i + 1}/${files.length}: ${file.name}...`, { duration: 2000 });
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await apiClient.post('/admin/vault/documents', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          
+          successCount++;
+          
+          // Agregar el documento inmediatamente a la lista con estado "processing"
+          setCodexDocs(prev => [response.data.document, ...prev]);
+          
+          toast.success(`✓ ${file.name} subido`, { duration: 3000 });
+          
+        } catch (error) {
+          failCount++;
+          const errorMsg = error.response?.data?.error || 'Error desconocido';
+          errors.push({ file: file.name, error: errorMsg });
+          
+          toast.error(`✗ ${file.name}: ${errorMsg}`, { duration: 5000 });
+        }
+        
+        // Pequeña pausa entre archivos para no saturar
+        if (i < files.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
       
-      if (failed > 0) {
-        const firstError = results.find(r => r.status === 'rejected')?.reason;
-        toast.error(`${failed} documento(s) fallaron: ${firstError?.response?.data?.error || 'Error al subir'}`);
+      // Resumen final
+      if (successCount > 0) {
+        toast.success(`✅ ${successCount} documento(s) subidos exitosamente`, { duration: 4000 });
       }
-
-      loadCodexDocs();
+      
+      if (failCount > 0) {
+        const errorDetails = errors.map(e => `• ${e.file}: ${e.error}`).join('\n');
+        toast.error(`⚠️ ${failCount} documento(s) fallaron:\n${errorDetails}`, { duration: 8000 });
+      }
+      
+      // Refrescar lista completa al final
+      await loadCodexDocs(false);
       
       // Limpiar el input para permitir subir los mismos archivos de nuevo
       e.target.value = '';
+      
     } catch (error) {
-      toast.error('Error al subir documentos');
+      toast.error('Error general al subir documentos');
     } finally {
       setUploading(false);
     }
@@ -293,6 +324,66 @@ export default function AdminPanel() {
     } catch (error) {
       toast.error('Error al eliminar documento');
       setDeleteConfirmModal(null);
+    }
+  };
+
+  const toggleDocSelection = (docId) => {
+    setSelectedDocs(prev => 
+      prev.includes(docId) 
+        ? prev.filter(id => id !== docId)
+        : [...prev, docId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDocs.length === codexDocs.length) {
+      setSelectedDocs([]);
+    } else {
+      setSelectedDocs(codexDocs.map(doc => doc.id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDocs.length === 0) return;
+
+    setBulkDeleteModal(false);
+    
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const docId of selectedDocs) {
+        try {
+          await apiClient.delete(`/admin/vault/documents/${docId}`);
+          successCount++;
+        } catch (error) {
+          failCount++;
+          console.error(`Error deleting doc ${docId}:`, error);
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`✅ ${successCount} documento(s) eliminado(s) exitosamente`);
+      }
+      if (failCount > 0) {
+        toast.error(`⚠️ ${failCount} documento(s) fallaron al eliminar`);
+      }
+      
+      setSelectedDocs([]);
+      await loadCodexDocs();
+    } catch (error) {
+      toast.error('Error al eliminar documentos');
+    }
+  };
+
+  const handleRetryDocument = async (docId, filename) => {
+    try {
+      toast.info(`Reintentando procesamiento de ${filename}...`);
+      await apiClient.post(`/admin/vault/documents/${docId}/retry`);
+      toast.success('Documento enviado para reprocesar');
+      await loadCodexDocs();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al reintentar documento');
     }
   };
 
@@ -405,11 +496,60 @@ export default function AdminPanel() {
                 </label>
               </div>
 
+              {/* Barra de acciones masivas */}
+              {selectedDocs.length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <CheckSquare className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        {selectedDocs.length} documento(s) seleccionado(s)
+                      </span>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setBulkEditModal(true)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition flex items-center space-x-2"
+                      >
+                        <Edit className="w-4 h-4" />
+                        <span>Editar Metadatos</span>
+                      </button>
+                      <button
+                        onClick={() => setBulkDeleteModal(true)}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition flex items-center space-x-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Eliminar</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedDocs([])}
+                        className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Lista de documentos */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-stone-200 dark:bg-gray-700">
                     <tr>
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={toggleSelectAll}
+                          className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                          title={selectedDocs.length === codexDocs.length ? "Deseleccionar todos" : "Seleccionar todos"}
+                        >
+                          {selectedDocs.length === codexDocs.length && codexDocs.length > 0 ? (
+                            <CheckSquare className="w-5 h-5" />
+                          ) : (
+                            <Square className="w-5 h-5" />
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                         Documento
                       </th>
@@ -426,7 +566,19 @@ export default function AdminPanel() {
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {codexDocs.map((doc) => (
-                      <tr key={doc.id}>
+                      <tr key={doc.id} className={selectedDocs.includes(doc.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => toggleDocSelection(doc.id)}
+                            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                          >
+                            {selectedDocs.includes(doc.id) ? (
+                              <CheckSquare className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                            ) : (
+                              <Square className="w-5 h-5" />
+                            )}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {doc.filename}
                         </td>
@@ -444,10 +596,17 @@ export default function AdminPanel() {
                             </span>
                           )}
                           {doc.vectorization_status === 'failed' && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
-                              <X className="w-3 h-3 mr-1" />
-                              Error
-                            </span>
+                            <div className="flex flex-col items-start space-y-1">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                                <X className="w-3 h-3 mr-1" />
+                                Error
+                              </span>
+                              {doc.vectorization_error && (
+                                <span className="text-xs text-red-600 dark:text-red-400 max-w-xs truncate" title={doc.vectorization_error}>
+                                  {doc.vectorization_error}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
@@ -462,6 +621,15 @@ export default function AdminPanel() {
                                 title="Editar metadata"
                               >
                                 <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            {(doc.vectorization_status === 'failed' || doc.vectorization_status === 'pending') && (
+                              <button
+                                onClick={() => handleRetryDocument(doc.id, doc.filename)}
+                                className="text-green-600 hover:text-green-700 dark:text-green-400 hover:dark:text-green-300"
+                                title="Reintentar procesamiento"
+                              >
+                                <RefreshCw className="w-4 h-4" />
                               </button>
                             )}
                             <button
@@ -1423,7 +1591,243 @@ export default function AdminPanel() {
           }}
         />
       )}
+
+      {/* Modal de eliminación en masa */}
+      <Modal 
+        isOpen={bulkDeleteModal} 
+        onClose={() => setBulkDeleteModal(false)}
+        title="Confirmar eliminación masiva"
+      >
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          ¿Estás seguro de que deseas eliminar <strong className="text-gray-900 dark:text-gray-100">{selectedDocs.length}</strong> documento(s) del Codex Dilus? Esta acción no se puede deshacer.
+        </p>
+        <div className="flex space-x-3 justify-end">
+          <button
+            onClick={() => setBulkDeleteModal(false)}
+            className="btn-secondary"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            className="btn-danger"
+          >
+            Eliminar {selectedDocs.length} documento(s)
+          </button>
+        </div>
+      </Modal>
+
+      {/* Modal de edición en masa */}
+      <Modal 
+        isOpen={bulkEditModal} 
+        onClose={() => setBulkEditModal(false)}
+        title="Editar metadatos en masa"
+      >
+        <BulkEditMetadataForm 
+          selectedDocs={selectedDocs}
+          codexDocs={codexDocs}
+          onClose={() => setBulkEditModal(false)}
+          onSuccess={() => {
+            setBulkEditModal(false);
+            setSelectedDocs([]);
+            loadCodexDocs();
+          }}
+          toast={toast}
+        />
+      </Modal>
     </div>
+  );
+}
+
+function BulkEditMetadataForm({ selectedDocs, codexDocs, onClose, onSuccess, toast }) {
+  const [metadata, setMetadata] = useState({
+    equipment_type: '',
+    manufacturer: '',
+    model: '',
+    protocol: '',
+    document_type: '',
+    tags: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Filtrar solo los campos que tienen valor
+    const updates = {};
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] && metadata[key].trim() !== '') {
+        updates[key] = metadata[key].trim();
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      toast.error('Debes completar al menos un campo para actualizar');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const docId of selectedDocs) {
+        try {
+          await apiClient.put(`/admin/vault/documents/${docId}/metadata`, updates);
+          successCount++;
+        } catch (error) {
+          failCount++;
+          console.error(`Error updating doc ${docId}:`, error);
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`✅ ${successCount} documento(s) actualizado(s) exitosamente`);
+      }
+      if (failCount > 0) {
+        toast.error(`⚠️ ${failCount} documento(s) fallaron al actualizar`);
+      }
+      
+      if (successCount > 0) {
+        onSuccess();
+      } else {
+        onClose();
+      }
+    } catch (error) {
+      toast.error('Error al actualizar metadatos');
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedDocsInfo = codexDocs.filter(doc => selectedDocs.includes(doc.id));
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
+        <p className="text-sm text-blue-900 dark:text-blue-100">
+          <strong>Editando {selectedDocs.length} documento(s):</strong>
+        </p>
+        <ul className="mt-2 text-xs text-blue-800 dark:text-blue-200 space-y-1 max-h-32 overflow-y-auto">
+          {selectedDocsInfo.map(doc => (
+            <li key={doc.id}>• {doc.filename}</li>
+          ))}
+        </ul>
+        <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+          ℹ️ Solo los campos que completes serán actualizados. Los campos vacíos se ignorarán.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Tipo de Equipo
+          </label>
+          <input
+            type="text"
+            value={metadata.equipment_type}
+            onChange={(e) => setMetadata({ ...metadata, equipment_type: e.target.value })}
+            placeholder="Ej: PLC, Sensor, Actuador"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Fabricante
+          </label>
+          <input
+            type="text"
+            value={metadata.manufacturer}
+            onChange={(e) => setMetadata({ ...metadata, manufacturer: e.target.value })}
+            placeholder="Ej: Siemens, Schneider"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Modelo
+          </label>
+          <input
+            type="text"
+            value={metadata.model}
+            onChange={(e) => setMetadata({ ...metadata, model: e.target.value })}
+            placeholder="Ej: S7-1200, M340"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Protocolo
+          </label>
+          <input
+            type="text"
+            value={metadata.protocol}
+            onChange={(e) => setMetadata({ ...metadata, protocol: e.target.value })}
+            placeholder="Ej: Modbus, Profinet"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Tipo de Documento
+          </label>
+          <input
+            type="text"
+            value={metadata.document_type}
+            onChange={(e) => setMetadata({ ...metadata, document_type: e.target.value })}
+            placeholder="Ej: Manual, Datasheet"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Etiquetas (separadas por coma)
+          </label>
+          <input
+            type="text"
+            value={metadata.tags}
+            onChange={(e) => setMetadata({ ...metadata, tags: e.target.value })}
+            placeholder="Ej: industrial, automatización"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+      </div>
+
+      <div className="flex space-x-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-secondary"
+          disabled={loading}
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          className="btn-primary flex items-center space-x-2"
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Loader className="w-4 h-4 animate-spin" />
+              <span>Actualizando...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              <span>Guardar Cambios</span>
+            </>
+          )}
+        </button>
+      </div>
+    </form>
   );
 }
 
