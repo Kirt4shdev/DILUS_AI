@@ -67,7 +67,7 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, client } = req.body;
 
     if (!validateProjectName(name)) {
       return res.status(400).json({ 
@@ -76,10 +76,10 @@ router.post('/', async (req, res, next) => {
     }
 
     const result = await query(
-      `INSERT INTO projects (user_id, name, description, status)
-       VALUES ($1, $2, $3, 'active')
+      `INSERT INTO projects (user_id, name, description, client, status)
+       VALUES ($1, $2, $3, $4, 'active')
        RETURNING *`,
-      [req.user.id, name.trim(), description?.trim() || null]
+      [req.user.id, name.trim(), description?.trim() || null, client?.trim() || null]
     );
 
     const project = result.rows[0];
@@ -106,7 +106,7 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, description, status } = req.body;
+    const { name, description, client, status } = req.body;
 
     // Verificar propiedad
     const existing = await query(
@@ -137,6 +137,11 @@ router.put('/:id', async (req, res, next) => {
     if (description !== undefined) {
       updates.push(`description = $${paramIndex++}`);
       params.push(description?.trim() || null);
+    }
+
+    if (client !== undefined) {
+      updates.push(`client = $${paramIndex++}`);
+      params.push(client?.trim() || null);
     }
 
     if (status) {

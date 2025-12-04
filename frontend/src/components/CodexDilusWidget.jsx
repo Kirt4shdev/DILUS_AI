@@ -180,7 +180,7 @@ export default function CodexDilusWidget() {
               Haz una pregunta técnica
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-              Ej: "¿Protocolo para sensores Modbus?"
+            Ej: "¿Que alimentación requiere el equipo WS600?"
             </p>
           </div>
         )}
