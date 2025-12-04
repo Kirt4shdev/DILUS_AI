@@ -4,8 +4,9 @@
 
 import { searchInDocument } from './ragService.js';
 import { generateWithGPT5Mini, generateWithGPT5Standard, parseAIResponse } from './aiService.js';
-import { getPromptsForAnalysis, buildRagPrompt } from '../utils/parallelPrompts.js';
+import { buildRagPrompt } from '../utils/parallelPrompts.js';
 import { getConfigValue } from './ragConfigService.js';
+import { getParallelPromptsForCategory } from './promptService.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -21,8 +22,15 @@ export async function executeParallelAnalysis(documentContexts, analysisType, us
   const { userId, projectId } = options;
 
   try {
-    // Obtener prompts específicos para este tipo de análisis
-    const prompts = getPromptsForAnalysis(analysisType);
+    // Obtener prompts específicos para este tipo de análisis desde la BD
+    const promptsFromDB = await getParallelPromptsForCategory(analysisType);
+    
+    // Convertir formato de BD al formato esperado
+    const prompts = promptsFromDB.map(p => ({
+      id: p.key,
+      pregunta: p.prompt_text,
+      campo_resultado: p.name.toLowerCase().replace(/\s+/g, '_')
+    }));
     
     // Obtener configuración de RAG desde la base de datos (topK configurado por el administrador)
     const topK = await getConfigValue('top_k', 5); // Default 5 si no está configurado
@@ -183,7 +191,15 @@ export async function executeParallelAnalysisSimple(fullContext, analysisType, u
   const startTime = Date.now();
 
   try {
-    const prompts = getPromptsForAnalysis(analysisType);
+    // Obtener prompts desde la BD
+    const promptsFromDB = await getParallelPromptsForCategory(analysisType);
+    
+    // Convertir formato de BD al formato esperado
+    const prompts = promptsFromDB.map(p => ({
+      id: p.key,
+      pregunta: p.prompt_text,
+      campo_resultado: p.name.toLowerCase().replace(/\s+/g, '_')
+    }));
     
     logger.info(`Starting simple parallel analysis`, {
       analysisType,

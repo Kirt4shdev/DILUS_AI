@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers, Edit, CheckSquare, Square, RefreshCw } from 'lucide-react';
+import { Upload, Trash2, Users, BarChart3, FileText, Check, X, TrendingUp, Loader, Activity, DollarSign, FolderOpen, Settings, Save, RotateCcw, Layers, Edit, CheckSquare, Square, RefreshCw, MessageSquare } from 'lucide-react';
 import Header from '../components/Header';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
 import TokenStatsView from '../components/TokenStatsView';
 import EditMetadataModal from '../components/EditMetadataModal';
+import PromptsManager from '../components/PromptsManager';
 import apiClient from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
@@ -402,6 +403,7 @@ export default function AdminPanel() {
   const tabs = [
     { id: 'codex', name: 'Codex Dilus', icon: FileText },
     { id: 'users', name: 'Usuarios', icon: Users },
+    { id: 'prompts', name: 'Prompts IA', icon: MessageSquare },
     { id: 'chunks', name: 'Análisis Chunks RAG', icon: Activity },
     { id: 'costs', name: 'Costes Embeddings', icon: DollarSign },
     { id: 'ragcontrol', name: 'Control del RAG', icon: Settings },
@@ -739,6 +741,11 @@ export default function AdminPanel() {
                 </table>
               </div>
             </div>
+          )}
+
+          {/* Tab: Prompts IA */}
+          {activeTab === 'prompts' && (
+            <PromptsManager />
           )}
 
           {/* Tab: Estadísticas de Tokens */}

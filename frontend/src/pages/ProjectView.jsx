@@ -133,23 +133,69 @@ export default function ProjectView() {
   };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
-
+    setUploading(true);
+    
     try {
-      setUploading(true);
-      await apiClient.post(`/projects/${id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success('Documento subido exitosamente');
+      // Subir archivos UNO POR UNO para mostrar progreso
+      let successCount = 0;
+      let failCount = 0;
+      const errors = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Mostrar progreso
+          if (files.length > 1) {
+            toast.info(`Subiendo ${i + 1}/${files.length}: ${file.name}...`, { duration: 2000 });
+          }
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          await apiClient.post(`/projects/${id}/documents`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          
+          successCount++;
+          
+          toast.success(`✓ ${file.name} subido`, { duration: 3000 });
+          
+        } catch (error) {
+          failCount++;
+          const errorMsg = error.response?.data?.error || 'Error desconocido';
+          errors.push({ file: file.name, error: errorMsg });
+          
+          toast.error(`✗ ${file.name}: ${errorMsg}`, { duration: 5000 });
+        }
+        
+        // Pequeña pausa entre archivos para no saturar
+        if (i < files.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      // Resumen final
+      if (successCount > 0) {
+        toast.success(`${successCount} documento(s) subido(s) exitosamente`, { duration: 4000 });
+      }
+      
+      if (failCount > 0) {
+        toast.error(`${failCount} documento(s) fallaron`, { duration: 4000 });
+      }
+      
+      // Recargar lista de documentos
       loadDocuments();
+      
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al subir documento');
+      toast.error('Error inesperado al subir documentos');
     } finally {
       setUploading(false);
+      // Limpiar el input para permitir subir los mismos archivos de nuevo
+      e.target.value = '';
     }
   };
 
@@ -560,15 +606,19 @@ export default function ProjectView() {
               {/* Upload */}
               <label className="w-full btn-secondary flex items-center justify-center space-x-2 cursor-pointer">
                 <Upload className="w-5 h-5" />
-                <span>{uploading ? 'Subiendo...' : 'Subir Documento'}</span>
+                <span>{uploading ? 'Subiendo...' : 'Subir Documento(s)'}</span>
                 <input
                   type="file"
                   onChange={handleFileUpload}
                   accept=".pdf,.docx,.txt"
                   className="hidden"
                   disabled={uploading}
+                  multiple
                 />
               </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
+                Puedes seleccionar múltiples archivos
+              </p>
             </div>
           </div>
 

@@ -5,7 +5,7 @@ import { getFile, uploadFile } from '../services/minioService.js';
 import { extractText } from '../services/documentService.js';
 import { searchInDocument, logChunkSelection } from '../services/ragService.js';
 import { generateWithGPT5Mini, generateWithGPT5Standard, canFitInContext, canFitInStandardContext, parseAIResponse, estimateTokens } from '../services/aiService.js';
-import { fillPrompt, PROMPT_ANALIZAR_PLIEGO, PROMPT_ANALIZAR_CONTRATO, PROMPT_GENERAR_OFERTA, PROMPT_GENERAR_DOCUMENTACION } from '../utils/prompts.js';
+import { getSinglePromptForCategory, fillPrompt } from '../services/promptService.js';
 import { generateOferta, generateDocumentacion } from '../services/docgenService.js';
 import { logger } from '../utils/logger.js';
 import { logTokenUsage } from '../services/tokenStatsService.js';
@@ -133,8 +133,9 @@ router.post('/projects/:projectId/analyze/pliego', async (req, res, next) => {
       documents: document_ids.length
     });
 
-    // Crear prompt
-    const prompt = fillPrompt(PROMPT_ANALIZAR_PLIEGO, { texto: fullContext });
+    // Obtener prompt desde la BD
+    const promptConfig = await getSinglePromptForCategory('pliego_tecnico');
+    const prompt = fillPrompt(promptConfig.prompt_text, { texto: fullContext });
 
     // Generar análisis
     const aiResponse = use_standard 
@@ -225,8 +226,9 @@ router.post('/projects/:projectId/analyze/contrato', async (req, res, next) => {
       documents: document_ids.length
     });
 
-    // Crear prompt
-    const prompt = fillPrompt(PROMPT_ANALIZAR_CONTRATO, { texto: fullContext });
+    // Obtener prompt desde la BD
+    const promptConfig = await getSinglePromptForCategory('contrato');
+    const prompt = fillPrompt(promptConfig.prompt_text, { texto: fullContext });
 
     // Generar análisis
     const aiResponse = use_standard 
@@ -315,8 +317,9 @@ router.post('/projects/:projectId/generate/oferta', async (req, res, next) => {
     });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
-    // Crear prompt
-    const prompt = fillPrompt(PROMPT_GENERAR_OFERTA, { 
+    // Obtener prompt desde la BD
+    const promptConfig = await getSinglePromptForCategory('oferta');
+    const prompt = fillPrompt(promptConfig.prompt_text, { 
       contexto: fullContext,
       cliente,
       observaciones: observaciones || ''
@@ -407,8 +410,9 @@ router.post('/projects/:projectId/generate/documentacion', async (req, res, next
     });
     const fullContext = contexts.map(c => `[${c.filename}]:\n${c.text}`).join('\n\n---\n\n');
 
-    // Crear prompt
-    const prompt = fillPrompt(PROMPT_GENERAR_DOCUMENTACION, { 
+    // Obtener prompt desde la BD
+    const promptConfig = await getSinglePromptForCategory('documentacion');
+    const prompt = fillPrompt(promptConfig.prompt_text, { 
       contexto: fullContext,
       tipo_documento,
       titulo

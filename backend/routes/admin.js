@@ -8,6 +8,17 @@ import { ingestDocument } from '../services/ragService.js';
 import { validateFileType } from '../utils/validators.js';
 import { logger } from '../utils/logger.js';
 import { getRagConfig, updateRagConfig, getConfigHistory, resetToDefaults } from '../services/ragConfigService.js';
+import {
+  getAllPrompts,
+  getPromptsByCategory,
+  getPromptByKey,
+  updatePrompt,
+  getPromptHistory,
+  createPrompt,
+  deletePrompt,
+  restorePrompt,
+  getPromptCategories
+} from '../services/promptService.js';
 
 const router = express.Router();
 
@@ -977,6 +988,200 @@ router.post('/rag-config/reset', async (req, res, next) => {
     });
   } catch (error) {
     logger.error('Error resetting RAG config', { error: error.message });
+    next(error);
+  }
+});
+
+// ============================================
+// PROMPTS MANAGEMENT
+// ============================================
+
+/**
+ * GET /api/admin/prompts
+ * Obtener todos los prompts
+ */
+router.get('/prompts', async (req, res, next) => {
+  try {
+    const { category, forceRefresh } = req.query;
+    
+    logger.info('Fetching prompts', { category, forceRefresh: !!forceRefresh });
+    
+    let prompts;
+    if (category) {
+      prompts = await getPromptsByCategory(category);
+    } else {
+      prompts = await getAllPrompts(!!forceRefresh);
+    }
+    
+    return res.json({ prompts });
+  } catch (error) {
+    logger.error('Error fetching prompts', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/prompts/categories
+ * Obtener categorías de prompts disponibles
+ */
+router.get('/prompts/categories', async (req, res, next) => {
+  try {
+    logger.info('Fetching prompt categories');
+    
+    const categories = await getPromptCategories();
+    
+    return res.json({ categories });
+  } catch (error) {
+    logger.error('Error fetching prompt categories', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/prompts/:id
+ * Obtener un prompt específico
+ */
+router.get('/prompts/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    logger.info('Fetching prompt by ID', { id });
+    
+    const result = await query('SELECT * FROM prompts WHERE id = $1', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    
+    return res.json({ prompt: result.rows[0] });
+  } catch (error) {
+    logger.error('Error fetching prompt by ID', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/prompts/:id/history
+ * Obtener historial de cambios de un prompt
+ */
+router.get('/prompts/:id/history', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+    
+    logger.info('Fetching prompt history', { promptId: id, limit });
+    
+    const history = await getPromptHistory(id, limit);
+    
+    return res.json({ history });
+  } catch (error) {
+    logger.error('Error fetching prompt history', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/prompts
+ * Crear un nuevo prompt
+ */
+router.post('/prompts', async (req, res, next) => {
+  try {
+    const promptData = req.body;
+    
+    logger.info('Creating new prompt', { key: promptData.key, category: promptData.category, userId: req.user.id });
+    
+    const newPrompt = await createPrompt(promptData, req.user.id);
+    
+    return res.status(201).json({ 
+      message: 'Prompt created successfully',
+      prompt: newPrompt 
+    });
+  } catch (error) {
+    if (error.message === 'A prompt with this key already exists') {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error.message === 'Missing required fields') {
+      return res.status(400).json({ error: error.message });
+    }
+    logger.error('Error creating prompt', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/prompts/:id
+ * Actualizar un prompt
+ */
+router.put('/prompts/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    logger.info('Updating prompt', { promptId: id, userId: req.user.id });
+    
+    const updatedPrompt = await updatePrompt(id, updates, req.user.id);
+    
+    return res.json({ 
+      message: 'Prompt updated successfully',
+      prompt: updatedPrompt 
+    });
+  } catch (error) {
+    if (error.message === 'Prompt not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'No valid fields to update') {
+      return res.status(400).json({ error: error.message });
+    }
+    logger.error('Error updating prompt', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/admin/prompts/:id
+ * Eliminar un prompt (soft delete)
+ */
+router.delete('/prompts/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    logger.info('Deleting prompt', { promptId: id, userId: req.user.id });
+    
+    await deletePrompt(id, req.user.id);
+    
+    return res.json({ 
+      message: 'Prompt deleted successfully'
+    });
+  } catch (error) {
+    if (error.message === 'Prompt not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    logger.error('Error deleting prompt', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/prompts/:id/restore
+ * Restaurar un prompt eliminado
+ */
+router.post('/prompts/:id/restore', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    logger.info('Restoring prompt', { promptId: id, userId: req.user.id });
+    
+    const restoredPrompt = await restorePrompt(id, req.user.id);
+    
+    return res.json({ 
+      message: 'Prompt restored successfully',
+      prompt: restoredPrompt 
+    });
+  } catch (error) {
+    if (error.message === 'Prompt not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    logger.error('Error restoring prompt', { error: error.message });
     next(error);
   }
 });
